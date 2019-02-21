@@ -39,13 +39,14 @@ PROGRAM trajau
   idex=1
   poriginal =10.0
   do while(poriginal<40.0)
+  write(*,*) 'poriginal', poriginal
   !do while(idex<2)
 
                       !poriginal = 40.0!plist(idex)
                       counter = 0
                       run=0
                       stat = 0
-                      do while(run<200) 
+                      do while(run<10) 
                               p=poriginal
                               runtime =1
                               !runtime=(40.0/poriginal)*m 
@@ -93,6 +94,7 @@ PROGRAM trajau
                        !       write(*,*) 'Getting started'
                                !do while(loopcount<1)
                               do while (abs(q)<10.01) !This is the trajectory loop
+                                        if (t.ge.5000000) exit
                                         !counter=counter+1
                                         loopcount=loopcount+1
 !                                        q=q+rdot*h
@@ -120,39 +122,7 @@ PROGRAM trajau
                                         d(2,1) = -d12
                                         d(1,2) = d12 
                                       !! HACKKKKK
-
-                                      ! !delR = 0
-                                      ! delP = 0
-                                      ! Vd = 0
-                                      ! Vpd = 0
-                                      ! d = 0
-                                      ! coef = 0
-                                      ! delR(1,1) = 0.0001
-                                      ! delR(1,2) = 0.00001+(0,1)*0.003
-                                      ! delR(2,1) = 0.00001-(0,1)*0.003
-                                      ! delR(2,2) = 0.0003
-                                      ! delP(1,1) = 0.0001
-                                      ! delP(1,2) = 0.00001+(0,1)*0.003
-                                      ! delP(2,1) = 0.00001-(0,1)*0.003
-                                      ! delP(2,2) = 0.0003
-                                      ! Vd(2,2) = 0.002
-                                      ! d(1,2) = 0.45
-                                      ! d(2,1) = -0.45
-                                      ! Vpd(1,1) = -0.002
-                                      ! Vpd(2,2) = -0.001
-                                      ! Vpd(1,2) = d(1,2)*(Vd(1,1) - Vd(2,2))
-                                      ! Vpd(2,1) = Vpd(1,2) 
-                                      ! coef = 1/sqrt(2.0)
-                                      ! p = 1837*0.01
                                         call au_propagate(p,q,coef, h, state,m, delR,delP, Vd, d, Vpd) 
-                                        !call getdelRdelPdot(delR,delP,delRdot,delPdot, V, d, Vpd, coef, m, p, state)
-                                        !delR = delR + delRdot*h
-                                        !delP = delP + delPdot*h
-!                                        rdot =p/m
-!                                        pdot = -Vpd(state,state)
-          
-!                                        call getcoefDot(coefdot, coef, Vd, rdot, d)
-!                                        call getADot(adot, a, Vd, rdot, d)
           
                                         gamma_c = h*(Vpd(2,2)-Vpd(1,1))*Real(delR(1,1) - delR(2,2))/2
 !!!!DANGER danger
@@ -209,18 +179,18 @@ PROGRAM trajau
                                         end if
           
                                         if(flag==1) then 
-                                                  temp3 = Real(delP(state,state))
-                                                  delP(1,1) = delP(1,1) - temp3
-                                                  delP(2,2) = delP(2,2) - temp3
-                                                  temp3 = Real(delR(state,state))
-                                                  delR(1,1) = delR(1,1) - temp3
-                                                  delR(2,2) = delR(2,2) - temp3
                                                   if(l(3-state)-l(state)<0.5*((p**2)/m)) then
                                                                   
                                                       p = sign(sqrt(p**2 +2*m*(l(state)-l(3-state))),p)
                                                       state = 3-state
                                                       pdot=-Vpd(state,state)
                                                       flag2=1
+                                                  temp3 = Real(delP(state,state))
+                                                  delP(1,1) = delP(1,1) - temp3
+                                                  delP(2,2) = delP(2,2) - temp3
+                                                  temp3 = Real(delR(state,state))
+                                                  delR(1,1) = delR(1,1) - temp3
+                                                  delR(2,2) = delR(2,2) - temp3
                                                       
                                                   end if
                                                   flag=0
@@ -622,7 +592,7 @@ Real*8, dimension(2,2), intent(INOUT):: Vp
 !    Vp(1,2) = -0.005*(exp(-(x**2)))*2*x
 !    Vp(2,1)=Vp(1,2)
 !    Vp(2,2) = -Vp(1,1)
-call Potentialpc(x, Vp)
+call Potentialpa(x, Vp)
 END subroutine Potentialp 
 
 Subroutine Potentialpa(x, Vp)
@@ -707,7 +677,7 @@ Real*8, dimension(2,2), intent(INOUT):: V
 !    V(1,2) = 0.005*(exp(-(x**2)))
 !    V(2,1)=V(1,2)
 !    V(2,2) = -V(1,1)
-call Potentialc(x,V)
+call Potentiala(x,V)
 END subroutine Potential 
 
 Subroutine Potentiala(x, V)

@@ -1,7 +1,13 @@
 subroutine Potentiala(x, V)
   implicit none
-  real*16, intent(in) :: x
-  complex*32, intent(inout),dimension(2,2) ::V
+  real*8, intent(in) :: x
+  complex*16, intent(inout),dimension(2,2) ::V
+  real*8 A, B, C, D
+
+  A = 0.01
+  B = 1.6
+  C = 0.005
+  D = 1.0
 
   if(x>0) then 
       V(1,1) = 0.01*(1- exp(-1.6*x))
@@ -16,9 +22,9 @@ end subroutine Potentiala
 
 subroutine Potentialb(x, V)
   implicit none
-  real*16, intent(in) :: x
-  complex*32, intent(inout),dimension(2,2) ::V
-  real*16 A, B, C, D, E0
+  real*8, intent(in) :: x
+  complex*16, intent(inout),dimension(2,2) ::V
+  real*8 A, B, C, D, E0
   A= 0.10
   B=0.28
   C=0.015
@@ -36,9 +42,9 @@ end subroutine Potentialb
 
 subroutine Potentialc(x, V)
   implicit none
-  real*16, intent(in) :: x
-  complex*32, intent(inout),dimension(2,2) ::V
-  real*16 A, B,C
+  real*8, intent(in) :: x
+  complex*16, intent(inout),dimension(2,2) ::V
+  real*8 A, B,C
   A = 0.0006
   B = 0.10
   C = 0.90
@@ -55,8 +61,15 @@ end subroutine Potentialc
  
 subroutine Potentialpa(x, Vp)
   implicit none
-  real*16, intent(in) :: x
-  complex*32, intent(inout),dimension(2,2) ::Vp
+  real*8, intent(in) :: x
+  complex*16, intent(inout),dimension(2,2) ::Vp
+  real*8 A, B, C, D
+
+  A = 0.01
+  B = 1.6
+  C = 0.005
+  D = 1.0
+  
   if(x>0) then 
       Vp(1,1) = 0.01* exp(-1.6*x)*1.6
   else
@@ -70,9 +83,9 @@ end subroutine Potentialpa
 
 subroutine Potentialpb(x, V)
   implicit none
-  real*16, intent(in) :: x
-  complex*32, intent(inout),dimension(2,2) ::V
-  real*16 A, B, C, D, E0
+  real*8, intent(in) :: x
+  complex*16, intent(inout),dimension(2,2) ::V
+  real*8 A, B, C, D, E0
   A= 0.10
   B=0.28
   C=0.015
@@ -89,9 +102,9 @@ end subroutine Potentialpb
  
 subroutine Potentialpc(x, V)
   implicit none
-  real*16, intent(in) :: x
-  complex*32, intent(inout),dimension(2,2) ::V
-  real*16 A, B,C
+  real*8, intent(in) :: x
+  complex*16, intent(inout),dimension(2,2) ::V
+  real*8 A, B,C
   A = 0.0006
   B = 0.10
   C = 0.90
@@ -110,10 +123,10 @@ end subroutine Potentialpc
 subroutine modelx(x,V)
   implicit none
   
-  real*16, intent(in) :: x
-  complex*32, intent(inout) :: V(3,3)
+  real*8, intent(in) :: x
+  complex*16, intent(inout) :: V(3,3)
 
-  real*16 A, B, C, D
+  real*8 A, B, C, D
 
   D = 7.0
 
@@ -137,10 +150,10 @@ end subroutine modelx
 subroutine modelxp(x,V)
   implicit none
   
-  real*16, intent(in) :: x
-  complex*32, intent(inout) :: V(3,3)
+  real*8, intent(in) :: x
+  complex*16, intent(inout) :: V(3,3)
 
-  real*16 A, B, C, D
+  real*8 A, B, C, D
 
   D = 7.0
 

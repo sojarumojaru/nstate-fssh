@@ -1,13 +1,13 @@
 program frog_batch
   implicit none
-  real*16 p,q,mass,tmax,timstp,p_initial,p_final,p_step,kepara,xranf
-  real*16 time
-  real*16, allocatable :: proba(:,:), gamma_collapse(:),gamma_reset(:)
+  real*8 p,q,mass,tmax,timstp,p_initial,p_final,p_step,kepara,xranf
+  real*8 time
+  real*8, allocatable :: proba(:,:), gamma_collapse(:),gamma_reset(:)
 
-  complex*32, allocatable :: V(:,:), Vd(:), Vp(:,:), Vpd(:,:), vl(:,:) 
-  complex*32, allocatable :: densmat(:,:),  delR(:,:),nacl(:)
-  complex*32, allocatable :: delP(:,:), c_matrix(:,:), nacv(:,:)
-  complex*32, allocatable :: b_matrix(:,:), b_matrix_temp(:,:), c_matrix_temp(:,:)
+  complex*16, allocatable :: V(:,:), Vd(:), Vp(:,:), Vpd(:,:), vl(:,:) 
+  complex*16, allocatable :: densmat(:,:),  delR(:,:),nacl(:)
+  complex*16, allocatable :: delP(:,:), c_matrix(:,:), nacv(:,:)
+  complex*16, allocatable :: b_matrix(:,:), b_matrix_temp(:,:), c_matrix_temp(:,:)
   
   integer active,it,is,irun,nruns,activeold,nstates
   integer, allocatable :: stat(:)
@@ -15,6 +15,18 @@ program frog_batch
   logical terminate
 
   
+  p_initial = 3.0
+  p_final = 3.1
+  p_step = 0.5
+  tmax = 100000
+  timstp = 0.1
+  nruns = 1
+  mass = 2000.0
+
+  nstates = 2
+ 
+
+  terminate = .false. 
 
 
   allocate(V(nstates,nstates))
@@ -33,41 +45,34 @@ program frog_batch
   
   allocate(proba(nstates,nstates),gamma_collapse(nstates))
   allocate(gamma_reset(nstates))
+ 
+  allocate(stat(4))
 
 
-  p_initial = 10.0
-  p_final = 10.0
-  p_step = 1.0
-  tmax = 100
-  timstp = 1
-  nruns = 10
-  mass = 2000.0
 
-  nstates = 2
-  
 
-  stat = 0
-
+  write(*,'(a)') '       #momentum      up-tran     up-ref     low-tran     low-ref'
   do while(p_initial < p_final) !initial momentum loop
+      stat = 0
       irun = 0 
       do while(irun<nruns) !indivudual trajectory loop
          irun = irun + 1
-          call initialize(p,q,densmat,active,p_initial)
+          call initialize(p,q,densmat,active,p_initial,nstates)
           terminate = .false.
           active = 1
           activeold = active
           time = 0
-          do while((time<tmax).or.(terminate)) 
+          do while((time<tmax).and.(.not.terminate)) 
               
               call electronic_evaluate(p,q,V,Vp,Vd,Vpd,nacv,nstates,active,vl)
 
               call classical_propagate(p,q,mass,Vpd,active,&
               &    activeold,nacv,kepara,timstp,Vd,nstates,nacl)
 
-              call electronic_propagate(p,q,densmat,Vd,Vpd,nacv,(timstp/2.0))
+              call electronic_propagate(densmat,Vd,nacl,(timstp/2.0),nstates)
 
-              call aush_propagate(densmat,delR,Vpd, &
-              &    gamma_collapse,gamma_reset,nacl,Vd,timstp)
+              call aush_propagate(densmat,nstates,delR,delP,Vpd, &
+              &    gamma_collapse,gamma_reset,mass,nacl,Vd,timstp,active)
               do is = 1,nstates
                   do it = 1,nstates
                       b_matrix_temp(is,it) = nacv(is,it)
@@ -82,8 +87,9 @@ program frog_batch
                   proba(active,is)=real(densmat(active,is)*b_matrix_temp(is,active))
                   proba(active,is)=(2.0)*timstp*proba(active,is)/real(densmat(active,active))
               end do
+              if(real(densmat(2,2))>0.00001) write(*,*) 'hello'
 
-              call electronic_propagate(p,q,densmat,Vd,Vpd,nacv,(timstp/2.0))
+              call electronic_propagate(densmat,Vd,nacl,(timstp/2.0),nstates)
 
               call random_number(xranf)
 
@@ -91,18 +97,80 @@ program frog_batch
               if (active.ne.activeold)  then 
                   call au_hop(delR,delP,nstates,active)
               else
-                  call au_collapse(gamma_collapse,nstates,active,densmat,delR,delP,timstp)
+                  call au_collapse(gamma_reset,gamma_collapse,densmat,delR,&
+                       & delP,nstates,active)
               end if
               time = time + timstp
-              if ((abs(q)) > 10) terminate = .true.
+              if ((abs(q)) > 11.0) then
+                  terminate = .true.
+              end if
           end do! time
-          if ((q.gt.0.0).and.(active.eq.1)) stat(1) = stat(1) + 1
-          if ((q.lt.0.0).and.(active.eq.1)) stat(2) = stat(2) + 1
-          if ((q.gt.0.0).and.(active.eq.0)) stat(3) = stat(3) + 1
-          if ((q.lt.0.0).and.(active.eq.0)) stat(4) = stat(4) + 1
+         if ((q.gt.10.0).and.(active.eq.2)) stat(1) = stat(1) + 1
+          if ((q.lt.-10.0).and.(active.eq.2)) stat(2) = stat(2) + 1
+          if ((q.gt.10.0).and.(active.eq.1)) stat(3) = stat(3) + 1
+          if ((q.lt.-10.0).and.(active.eq.1)) stat(4) = stat(4) + 1
       end do ! run
-      write(*,*) p_initial, stat
+      write(*,'(e15.6,4i12)') p_initial, stat
+      p_initial = p_initial + p_step
   end do! momentum
 
 end program
 
+subroutine select_newstate(ifstate, xranf, proba, &
+& nstates)
+!!------------------------------------------------------------------------------------
+!!------------------------------------------------------------------------------------
+!! Selects the active state for the next MD step based on
+!! hopping probabilities and the generated random number.
+!! input/output  :: integer ifstate 
+!!               [IN]   initial active state
+!!               [OUT]  final active state  
+!! input         :: real(kdp) xranf
+!!               [IN]   Random number to be checked against probability
+!! input         :: integer nstate
+!!               [IN]   Total number of states
+!! input         :: real(kdp) proba(nstates,nstates)
+!!               [IN] Matrix of probability such that
+!!                    proba(i,j) is the probability of
+!!                    hopping from state i to state j.
+!! Note :: Indices in proba starts from 1, state numbering
+!! starts from 0. (Sorry)
+!!------------------------------------------------------------------------------------
+!!------------------------------------------------------------------------------------
+!! Date : Jan 25, 2019.
+!! Author: Saswata Roy
+!!------------------------------------------------------------------------------------
+
+implicit none
+
+integer, intent(inout):: ifstate, nstates
+real*8, intent(inout):: xranf, proba(nstates,nstates)
+!Local variables
+real*8 Sj 
+integer ii, exopt, is,it
+
+ Sj=0
+ exopt = ifstate
+ do ii = 1,nstates
+     Sj=Sj+proba(exopt+1,ii)
+     if(xranf.lt.Sj) then
+         ifstate = ii-1
+         exit
+     end if
+ end do
+end subroutine select_newstate
+
+subroutine initialize(p,q,densmat,active,p_initial,nstates)
+  implicit none
+
+  integer, intent(inout) :: active,nstates
+  real*8, intent(inout) :: p,q,p_initial
+  complex*16, intent(inout) :: densmat(nstates,nstates)
+
+  active = 1
+  p = p_initial
+  q = -10.0
+  densmat = 0d0
+  densmat(active,active) = (1d0,0d0)
+
+end subroutine initialize
