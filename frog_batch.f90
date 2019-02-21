@@ -1,35 +1,52 @@
 program frog_batch
   implicit none
+  real*16 p,q,mass,tmax,timstp,p_initial,p_final,p_step,kepara,xranf
+  real*16 time
+  real*16, allocatable :: proba(:,:), gamma_collapse(:),gamma_reset(:)
+
+  complex*32, allocatable :: V(:,:), Vd(:), Vp(:,:), Vpd(:,:), vl(:,:) 
+  complex*32, allocatable :: densmat(:,:),  delR(:,:),nacl(:)
+  complex*32, allocatable :: delP(:,:), c_matrix(:,:), nacv(:,:)
+  complex*32, allocatable :: b_matrix(:,:), b_matrix_temp(:,:), c_matrix_temp(:,:)
   
-  real*8 p, q, pdot, rdot, h, k1p, k2p, k3p, k4p, k1q, k2q, k3q, k4q,random,random2
-  real*8,  allocatable :: V(:,:),d(:,:)
-  complex*16, dimension(2) :: coef(:), coefdot(:)
-  complex*16, dimension(2,2):: a, adot, delR, delP, delRdot, delPdot
-  real*8 t,m, runtime, gamma_c, temp3
-  real*8, dimension(4):: plist
-  real*8, parameter:: hbar=1 !1.05457173d-34
-  Integer state, counter, flag, flag2, loopcount, run, idex, sh_seed, rnd_size
-  real*8 e1, e2, d12, poriginal, b12, b21, probability
-  real*8, dimension(2):: l
-  real*8, dimension(2,2) :: CC, CC1, Vp, Vpd, Vd
+  integer active,it,is,irun,nruns,activeold,nstates
+  integer, allocatable :: stat(:)
   
-  inputuinit = 1
-  open(inputunit,file='Input',stat=ierr)
-  read(inputunit,*) dummy, nstates
+  logical terminate
+
+  
 
 
   allocate(V(nstates,nstates))
-  allocate(Vp(nstates,nstate))
+  allocate(vl(nstates,nstates))
+  allocate(Vp(nstates,nstates))
   allocate(Vd(nstates))
-  allocate(Vpd(nstates,nstate))
+  allocate(Vpd(nstates,nstates))
+  allocate(nacv(nstates,nstates))
+  allocate(nacl((nstates*(nstates+1))/2))
+
+  allocate(b_matrix_temp(nstates,nstates))
+
+  allocate(densmat(nstates,nstates))
+  allocate(delR(nstates,nstates))
+  allocate(delP(nstates,nstates))
+  
+  allocate(proba(nstates,nstates),gamma_collapse(nstates))
+  allocate(gamma_reset(nstates))
+
 
   p_initial = 10.0
-  p_final = 40.0
+  p_final = 10.0
   p_step = 1.0
   tmax = 100
   timstp = 1
   nruns = 10
   mass = 2000.0
+
+  nstates = 2
+  
+
+  stat = 0
 
   do while(p_initial < p_final) !initial momentum loop
       irun = 0 
@@ -37,33 +54,38 @@ program frog_batch
          irun = irun + 1
           call initialize(p,q,densmat,active,p_initial)
           terminate = .false.
+          active = 1
           activeold = active
           time = 0
           do while((time<tmax).or.(terminate)) 
               
-              call electronic_evaluate(p,q,V,Vp,Vd,Vpd,d,nstates,active,vl)
+              call electronic_evaluate(p,q,V,Vp,Vd,Vpd,nacv,nstates,active,vl)
 
               call classical_propagate(p,q,mass,Vpd,active,&
-              &    activeold,d,kepara,timstp, Vd)
-              call electronic_propagate(p,q,densmat,Vd,Vpd,d,(timstp/2.0))
+              &    activeold,nacv,kepara,timstp,Vd,nstates,nacl)
 
-              call aush_propagate(p,q,densmat,delR,delP,Vpd,gamma_collapse)
+              call electronic_propagate(p,q,densmat,Vd,Vpd,nacv,(timstp/2.0))
+
+              call aush_propagate(densmat,delR,Vpd, &
+              &    gamma_collapse,gamma_reset,nacl,Vd,timstp)
               do is = 1,nstates
                   do it = 1,nstates
-                      b_matrix_temp(is,it) = d(is,it)
+                      b_matrix_temp(is,it) = nacv(is,it)
                   end do
               end do
               do is =1,nstates
-                  b_matrix_temp(is,is) = b_matrix_temp(is,is)+(0,1)*vl(is)
+                  b_matrix_temp(is,is) = b_matrix_temp(is,is)+(0,1)*Vd(is)
               end do
 
               do is=1,nstates
                   if(active.eq.is) cycle
-                  proba(active,is)=real(densmatnew(exopt+1,is)*b_matrix_temp(is,exopt+1))
-                  proba(active,is)=(2.0)*timstp*proba(exopt+1,is)/pop(exopt+1)
+                  proba(active,is)=real(densmat(active,is)*b_matrix_temp(is,active))
+                  proba(active,is)=(2.0)*timstp*proba(active,is)/real(densmat(active,active))
               end do
 
-              call electronic_propagate(p,q,densmat,Vd,Vpd,d,(timstp/2.0))
+              call electronic_propagate(p,q,densmat,Vd,Vpd,nacv,(timstp/2.0))
+
+              call random_number(xranf)
 
               call select_newstate(active,xranf,proba,nstates)
               if (active.ne.activeold)  then 
