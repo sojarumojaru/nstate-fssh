@@ -1,55 +1,84 @@
-subroutine  electronic_evaluate(p,q,V,Vp,Vd,Vpd,d,nstates,active,vl)
+subroutine  electronic_evaluate(p,q,V,Vp,Vd,Vpd,nacv,nstates,active,vl)
   implicit none
   integer, intent(in) :: nstates,active
   real*8, intent(in) :: p,q
   complex*16, intent(inout) :: V(nstates,nstates), Vd(nstates), Vp(nstates, nstates)
-  complex*16, intent(inout) :: d(nstates,nstates), vl(nstates,nstates),Vpd(nstates,nstates)
+  complex*16, intent(inout) :: nacv(nstates,nstates), vl(nstates,nstates),Vpd(nstates,nstates)
 
   !! Local variables
   
-  complex*16, allocatable :: VR(:,:),c_matrix_temp(:,:), WORK(:)
+  complex*16, allocatable :: VR(:,:),c_matrix_temp(:,:), WORK(:),Vcopy(:,:),vpcopy(:,:)
   real*8 alpha, beta, thresh
   real*8, allocatable ::  RWORK(:)
   integer i,j,info,lwork
+  logical swapped
   
   allocate(c_matrix_temp(nstates,nstates))
+  allocate(Vcopy(nstates,nstates))
+  allocate(Vpcopy(nstates,nstates))
   allocate(RWORK(2*nstates),WORK(2*nstates),VR(nstates,nstates))
   thresh = 1d-6
   lwork = 2*nstates
   call potentiala(q,V)
   call potentialpa(q,Vp)
-  
-!         SUBROUTINE ZGEEV( JOBVL, JOBVR, N, A, LDA, W, VL, LDVL, VR, LDVR,
-!     $                  WORK, LWORK, RWORK, INFO ) 
+  Vcopy = V
+
+  Vpcopy = Vp
+ 
   call zgeev('V','N',nstates,V, nstates, Vd, VL, nstates, VR, nstates,&
-           WORK, lwork, RWORK, info )
-!  write(*,*) 'info'
-!  write(*,*) info
-!
-!  write(*,*) 'Vd'
-!  write(*,*) Vd
-!  write(*,*) 
-!  write(*,*) 'Vl'
-!  write(*,*) Vl
+  &        WORK, lwork, RWORK, info )
+  V = Vcopy
 
   alpha = 1d0
   beta = 0d0
-  call zgemm('N','N',nstates,nstates,nstates,alpha,vl,nstates,&
-       Vp,nstates,beta,c_matrix_temp,nstates)
-  call zgemm('N','C',nstates,nstates,nstates,alpha,c_matrix_temp,nstates,&
-       vl,nstates,beta,Vpd,nstates)
+  call sorteigen(nstates,Vd,Vl,swapped)
 
-  d = 0d0
+  call zgemm('N','N',nstates,nstates,nstates,alpha,vl,nstates,&
+       & Vpcopy,nstates,beta,c_matrix_temp,nstates)
+
+  call zgemm('N','C',nstates,nstates,nstates,alpha,c_matrix_temp,nstates,&
+       & vl,nstates,beta,Vpd,nstates)
+
+  nacv = 0d0
   do i = 1, nstates
       do j = 1,nstates
           if(i.eq.j) cycle
-          if (real(Vd(i) - Vd(j)) > thresh) d(i,j) = Vpd(i,j)/(Vd(i) - Vd(j))
+          nacv(i,j) = (Vpd(i,j))/(Vd(j) - Vd(i))
+!          if(swapped) nacv(i,j) = -nacv(i,j)
       end do
   end do
 
 end subroutine electronic_evaluate
 
+subroutine sorteigen(nstates,Vd,Vl,swapped)
+  implicit none
+  logical, intent(inout) :: swapped
+  integer, intent(in) :: nstates
+  complex*16, intent(inout) :: Vd(nstates), Vl(nstates,nstates)
 
+  !!Local
+  complex*16,allocatable:: scratch(:)
+  complex*16 scratchval
+  integer ii, ij, ik
+  swapped = .false.
+  allocate(scratch(nstates))
+  do ii = 1,nstates
+     do ij = 1, nstates - 1
+         if(real(Vd(ij)) > real(Vd(ij+1))) then
+             swapped = .true.
+             scratchval = Vd(ij)
+             Vd(ij) = Vd(ij+1)
+             Vd(ij+1) = scratchval
+             do ik = 1,nstates
+                 scratchval = Vl(ij,ik)
+                 Vl(ij,ik) = Vl(ij+1,ik)
+                 Vl(ij+1,ik) = scratchval
+             end do
+         end if
+     end do
+ end do
+
+end subroutine sorteigen
 
 
 
@@ -79,7 +108,7 @@ subroutine classical_propagate(p,q,mass,force,active,activeold,nacv,kepara,&
   nacl = 0
   if(activeold.eq.active) then
       vel = p/mass
-      acc = -real(force(active,active))/mass
+      acc = real(force(active,active))/mass
       vel = vel + acc*timstp
       do ij = 1,nstates
           do ii = ij,nstates
@@ -90,12 +119,11 @@ subroutine classical_propagate(p,q,mass,force,active,activeold,nacv,kepara,&
       q = q + vel*timstp
       p = mass*vel
       kepara = 0.5*(vel-acc*timstp/2.0)*(vel-acc*timstp/2.0)*mass
-      pe = Vd(active)
+      pe = real(Vd(active))
       totale = kepara + pe
   end if 
 
   if(active.ne.activeold) then
-      write(*,*) ' 3  0    2'
       vel = p/mass
       acc = -force(activeold,activeold)/mass
       vel = vel + acc*timstp*0.5
@@ -485,7 +513,7 @@ subroutine au_collapse(gamma_reset,gamma_collapse,densmat,delR,delP,nstates,ifst
 
       lcolpse = .false. 
       if(gamma_collapse(i)>xranf) then
-      write(*,'(a,i3)') 'Collapse condition satisfied for state ', i
+      !write(*,'(a,i3)') 'Collapse condition satisfied for state ', i
           icolstate = i
           lcolpse = .true.
           temp = densmat(i,i)
@@ -544,3 +572,38 @@ subroutine au_hop(nstates,delR,delP,ifstate)
   delR(ifstate,ifstate) = 0.0
 
 end subroutine au_hop
+
+subroutine createEigenVectors(Vd, CC, V)
+  implicit none
+  complex*16, intent(inout):: Vd(2)
+  complex*16, intent(inout), dimension(2,2):: CC, V
+  !! local
+  complex*16 k1,k2,d1,d2,e1,e2
+
+  e1= V(1,1)+V(2,2)
+  e2 = (V(1,1)-V(2,2))**2+4*V(2,1)*V(1,2)
+  Vd(1) = (e1-sqrt(e2))/2.0
+  Vd(2) = (e2+sqrt(e2))/2.0
+
+  if(abs(V(1,2))>1d-15) then
+      k1 = (Vd(1)-V(1,1))/(V(1,2))
+      k2 = (Vd(2)-V(1,1))/(V(1,2))
+      d1 = Sqrt(1.0+k1**2)
+      d2 = Sqrt(1.0+k2**2)
+
+      CC(1,1) = 1.0/d1
+      CC(1,2) = 1.0/d2
+      CC(2,1) = k1/d1
+      CC(2,2) = k2/d2
+  else if(real(V(1,1))<real(V(2,2))) then
+      CC(1,1) = 1.0
+      CC(1,2) = 0.0
+      CC(2,1) = 0.0
+      CC(2,2) = 1.0
+  else
+      CC(1,1) = 0.0
+      CC(1,2) = 1.0
+      CC(2,1) = 1.0
+      CC(2,2) = 0.0
+  end if  
+end subroutine createEigenVectors
