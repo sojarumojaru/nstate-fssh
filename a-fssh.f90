@@ -6,14 +6,14 @@ PROGRAM trajau
   Real*8, dimension(2,2) :: V,d
   complex*16, dimension(2) :: coef, coefdot
   complex*16, dimension(2,2):: a, adot, delR, delP, delRdot, delPdot
-  Real*8 t,m, runtime, gamma_c, temp3
+  Real*8 t,m, runtime, gamma_c, gamma_r, temp3
   real*8, dimension(4):: plist
   real*8, parameter:: hbar=1 !1.05457173d-34
   Integer state, counter, flag, flag2, loopcount, run, idex, sh_seed, rnd_size
   Real*8 e1, e2, d12, poriginal, b12, b21, probability
   Real*8, dimension(2):: l
   Real*8, dimension(2,2) :: CC, CC1, Vp, Vpd, Vd
-  Integer, dimension(4):: stat
+  Integer, dimension(5):: stat
   Integer, allocatable :: seedy(:)
   Real*8 ran2
   call random_seed(size=rnd_size)
@@ -25,8 +25,8 @@ PROGRAM trajau
   flag2=0
   seedy=-1234
   sh_seed = -1234
-  open(90, FILE='statistics.dat_nodeco')
-  open(7, File = 'trajectory.dat_nodeco')
+  open(90, FILE='statistics.dat_afssh2')
+!  open(7, File = 'trajectory.dat_afssh2')
   open(8, File = 'gamma_c_1h0_nodeco')
   open(4, File = 'rnd_1')
   open(88, File = 'collapse_')
@@ -46,7 +46,7 @@ PROGRAM trajau
                       counter = 0
                       run=0
                       stat = 0
-                      do while(run<10) 
+                      do while(run<200) 
                               p=poriginal
                               runtime =1
                               !runtime=(40.0/poriginal)*m 
@@ -123,14 +123,22 @@ PROGRAM trajau
                                         d(1,2) = d12 
                                       !! HACKKKKK
                                         call au_propagate(p,q,coef, h, state,m, delR,delP, Vd, d, Vpd) 
-          
-                                        gamma_c = h*(Vpd(2,2)-Vpd(1,1))*Real(delR(1,1) - delR(2,2))/2
-!!!!DANGER danger
-!!BE caureful
-
-                                        ! gamma_c = 0.0
-
-                                        gamma_c = sign(gamma_c, Real( (delR(1,1)-delR(2,2))*(delP(1,1)-delP(2,2)) ))
+!afssh -1          
+!                                        gamma_r = -h*real((-Vpd(state,state)+Vpd(3-state,3-state))*&
+!                                                   &(-delR(state,state) + delR(3-state,3-state))/2.0)
+!                                        gamma_c = -gamma_r 
+!                                        gamma_r = 0.0
+!
+!                                        gamma_c = sign(gamma_c, Real( (delR(1,1)-delR(2,2))*(delP(1,1)-delP(2,2)) ))
+!!!afssh -2          
+                                        gamma_r = -h*real((-Vpd(state,state)+Vpd(3-state,3-state))*&
+                                                   &(-delR(state,state) + delR(3-state,3-state))/2.0)
+                                        gamma_c = -gamma_r - 2.0* h*abs(Vpd(1,2)*(delR(3-state,3-state) - delR(state,state)))
+!!!!!DANGER danger
+!!!BE caureful
+!
+!                                        ! gamma_c = 0.0
+!
                                         b21 = -2.0*Realpart(coef(2)*conjg(coef(1)))*p*d(2,1)/m!*Real(Real(conjg(a(2,1))*rdot*d(2,1)))+  2*Real(Aimag(conjg(a(2,1))*Vd(2,1)))/hbar!These are the real deal
                                         b12 = -2.0*Realpart(coef(1)*conjg(coef(2)))*p*d(1,2)/m!+ 2*Real(Aimag(conjg(a(1,2))*Vd(1,2)))/hbar !These are the probablities to be calculated
                                         a(1,1)=coef(1)*conjg(coef(1))
@@ -216,6 +224,12 @@ PROGRAM trajau
                                               delP=0
                                               delR=0
                                         end if
+                                        if(gamma_r>random) then
+                                              write(88,*) 'reset'
+                                              stat(5) = stat(5)+1
+                                              delP=0
+                                              delR=0
+                                        end if
                                         
                                         t=t+h
                               end do!The time domain
@@ -243,7 +257,7 @@ PROGRAM trajau
                               end if
                       end do !run
    
-                      write(90,*) poriginal, counter, stat(1), stat(2), stat(3), stat(4)
+                      write(90,*) poriginal, counter, stat(1), stat(2), stat(3), stat(4),stat(5)
 
 
 
@@ -592,7 +606,7 @@ Real*8, dimension(2,2), intent(INOUT):: Vp
 !    Vp(1,2) = -0.005*(exp(-(x**2)))*2*x
 !    Vp(2,1)=Vp(1,2)
 !    Vp(2,2) = -Vp(1,1)
-call Potentialpa(x, Vp)
+call Potentialpc(x, Vp)
 END subroutine Potentialp 
 
 Subroutine Potentialpa(x, Vp)
@@ -677,7 +691,7 @@ Real*8, dimension(2,2), intent(INOUT):: V
 !    V(1,2) = 0.005*(exp(-(x**2)))
 !    V(2,1)=V(1,2)
 !    V(2,2) = -V(1,1)
-call Potentiala(x,V)
+call Potentialc(x,V)
 END subroutine Potential 
 
 Subroutine Potentiala(x, V)
