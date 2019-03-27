@@ -1,8 +1,10 @@
 program frog_batch
   implicit none
-  real*8 p,q,mass,tmax,timstp,p_initial,p_final,p_step,kepara,xranf
+  integer ndim
+  real*8 mass,tmax,timstp,p_initial,p_final,p_step,kepara,xranf
   real*8 time,scr
   real*8, allocatable :: proba(:,:), gamma_collapse(:),gamma_reset(:)
+  real*8, allocatable :: postn(:), momentum(:)
 
   complex*16, allocatable :: V(:,:), Vd(:), Vp(:,:), Vpd(:,:), vl(:,:) 
   complex*16, allocatable :: densmat(:,:),  delR(:,:),nacl(:)
@@ -24,7 +26,7 @@ program frog_batch
   mass = 2000.0
 
   nstates = 2
- 
+  ndim = 1
 
   terminate = .false. 
 
@@ -36,7 +38,8 @@ program frog_batch
   allocate(Vpd(nstates,nstates))
   allocate(nacv(nstates,nstates))
   allocate(nacl((nstates*(nstates+1))/2))
-
+  allocate(postn(ndim))
+  allocate(momentum(ndim))
   allocate(b_matrix_temp(nstates,nstates))
 
   allocate(densmat(nstates,nstates))
@@ -55,7 +58,8 @@ program frog_batch
       write(*,'(a)') "#q, real(Vd(1)), real(Vd(2)), real(nacv(1,2))"
       do q = -10.0,10.0,0.2
 
-          call electronic_evaluate(p,q,V,Vp,Vd,Vpd,nacv,nstates,active,vl)
+          call electronic_evaluate(postn,momentum,V,Vp,Vd,&
+               & Vpd,nacv,ndim,nstates,active,vl)
           
           write(*,'(6e18.10)') q, real(Vd(1)), real(Vd(2)), real(nacv(1,2)),&
            & real(Vpd(1,1)), real(Vpd(2,2))
@@ -185,11 +189,11 @@ integer ii, exopt, is,it
  end do
 end subroutine select_newstate
 
-subroutine initialize(p,q,densmat,active,p_initial,nstates)
+subroutine initialize(postn,momentum,densmat,active,p_initial,ndim,nstates)
   implicit none
 
-  integer, intent(inout) :: active,nstates
-  real*8, intent(inout) :: p,q,p_initial
+  integer, intent(inout) :: active,nstates,ndim
+  real*8, intent(inout) :: momentum(ndim),postn(ndim),p_initial
   complex*16, intent(inout) :: densmat(nstates,nstates)
 
   active = 1

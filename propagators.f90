@@ -1,7 +1,9 @@
-subroutine  electronic_evaluate(p,q,V,Vp,Vd,Vpd,nacv,nstates,active,vl)
+subroutine
+electronic_evaluate(postn,momentum,V,Vp,Vd,Vpd,nacv,ndim,&
+                    & nstates,active,vl)
   implicit none
-  integer, intent(in) :: nstates,active
-  real*8, intent(in) :: p,q
+  integer, intent(in) :: nstates,active,ndim
+  real*8, intent(in) :: postn(ndim),momentum(ndim)
   complex*16, intent(inout) :: V(nstates,nstates), Vd(nstates), Vp(nstates, nstates)
   complex*16, intent(inout) :: nacv(nstates,nstates), vl(nstates,nstates),Vpd(nstates,nstates)
 
@@ -20,8 +22,8 @@ subroutine  electronic_evaluate(p,q,V,Vp,Vd,Vpd,nacv,nstates,active,vl)
   allocate(RWORK(4*nstates),WORK(4*nstates),VR(nstates,nstates))
   thresh = 1d-6
   lwork = 4*nstates
-  call potentiala(q,V)
-  call potentialpa(q,Vp)
+  call potentiala(q(1),V)
+  call potentialpa(q(1),Vp)
   Vcopy = V
 
   Vpcopy = Vp
