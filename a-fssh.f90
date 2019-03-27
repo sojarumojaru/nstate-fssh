@@ -2,284 +2,226 @@
   
 PROGRAM trajau
   implicit none
-  Real*8 p, q, pdot, rdot, h, k1p, k2p, k3p, k4p, k1q, k2q, k3q, k4q,random,random2
+  Real*8 p, q, pdot, rdot, timestep, k1p, k2p, k3p, k4p
+  real*8 k1q, k2q, k3q, k4q,random,random2
   Real*8, dimension(2,2) :: V,d
   complex*16, dimension(2) :: coef, coefdot
   complex*16, dimension(2,2):: a, adot, delR, delP, delRdot, delPdot
   Real*8 t,m, runtime, gamma_c, gamma_r, temp3
   real*8, dimension(4):: plist
   real*8, parameter:: hbar=1 !1.05457173d-34
-  Integer state, counter, flag, flag2, loopcount, run, idex, sh_seed, rnd_size
+  Integer state, counter, flag, flag2, loopcount, run, idex, sh_seed, rnd_size,maxrun
   Real*8 e1, e2, d12, poriginal, b12, b21, probability
   Real*8, dimension(2):: l
   Real*8, dimension(2,2) :: CC, CC1, Vp, Vpd, Vd
-  Integer, dimension(5):: stat
+  Integer, dimension(6):: stat
   Integer, allocatable :: seedy(:)
   Real*8 ran2
   call random_seed(size=rnd_size)
   !plist= (/4.4,4.6,7.7,7.9,8.1,8.3,8.7,8.9,9.2,9.7,10.3,10.7,11.3/)
   plist= (/7.9,8.1,8.3,8.7/)
   allocate(seedy(rnd_size))
-  m=1837
+  m=2000
   flag=0
   flag2=0
   seedy=-1234
   sh_seed = -1234
-  open(90, FILE='statistics.dat_afssh2')
-!  open(7, File = 'trajectory.dat_afssh2')
+  open(90, FILE='statistics.k10-deco')
   open(8, File = 'gamma_c_1h0_nodeco')
   open(4, File = 'rnd_1')
   open(88, File = 'collapse_')
   open(65, File = 'Force')
   open(69, File = 'print_dRdP')
-  !open(8, File = 'gibberish.dat')
-  !write(7,*) '#t, p, q, Vd(state,state), Vd(3-state,3-state), probability, pop(1)'
-  !write(7,*) '#t, p, q, Vd(state,state), real(delR(1,1) - delR(2,2)), gamma_c, random'
-  h=10.0
+  timestep=1
   idex=1
   poriginal =10.0
-  do while(poriginal<40.0)
-  write(*,*) 'poriginal', poriginal
-  !do while(idex<2)
+  maxrun = 200
+  write(90,*) 'poriginal, counter, lowtrans, uptrans, lowref, upref, coll, reset'
+  do while(poriginal.le.10.0)
 
-                      !poriginal = 40.0!plist(idex)
-                      counter = 0
-                      run=0
-                      stat = 0
-                      do while(run<200) 
-                              p=poriginal
-                              runtime =1
-                              !runtime=(40.0/poriginal)*m 
-                              run=run+1
-                              t = 0
-                              state = 1
-                              coef = (0,0)
-                              a=(0,0)
-                              coef(1)=(1,0)
-                              a(1,1)=(1,0)
-                              flag = 0
-                              delP = 0
-                              delR = 0 
-                              delPdot = 0
-                              delRdot = 0
+      write(*,*) 'poriginal', poriginal
+      counter = 0
+      run=0
+      stat = 0
+      do while(run<maxrun) 
+          p=poriginal
+          runtime =1
+          !runtime=(40.0/poriginal)*m 
+          run=run+1
+          t = 0
+          state = 1
+          coef = (0,0)
+          a=(0,0)
+          coef(1)=(1,0)
+          a(1,1)=(1,0)
+          flag = 0
+          delP = 0
+          delR = 0 
+          delPdot = 0
+          delRdot = 0
 
-                              q=-10.0 ! Initial condition set up, each of them making a start from -7
-                              loopcount = 0
+          q=-10.0 ! Initial condition set up, each of them making a start from -7
+          loopcount = 0
 
-        
-                              call Potential(q,V)!The diabatic potential matrix is evaluated
-                              e1= V(1,1)+V(2,2)
-                              e2 = (V(1,1)-V(2,2))**2+4*V(2,1)*V(1,2)
-                              l(2) = (e1+Sqrt(e2))/2 !The two eigen values are evaluated 
-                              l(1) = (e1-Sqrt(e2))/2
-                              Vd=0.0
-                              Vd(1,1) = l(1)
-                              Vd(2,2)=l(2)
-                              call createEigenVector(l(1), l(2), CC, V)!The eigen vector matrix is formed
-                              call inverse2(CC,CC1)
-                              call PotentialP(q, Vp)
-                              Vpd = matmul(CC1,matmul(Vp,CC))!The derivative of the potential in the adiabatic state is calculated
-        
-                              d12 = Vpd(2,1)/(l(2)-l(1))
-                            
-                              d=0.0
-                              d(2,1) = -d12
-                              d(1,2) = d12 
-                              rdot =p/m
-                              pdot = -Vpd(state,state)
-        
-                              call getcoefDot(coefdot, coef,Vd, rdot, d)
-                              call getADot(adot, a, Vd, rdot, d)
+ 
+          call Potential(q,V)!The diabatic potential matrix is evaluated
+          e1= V(1,1)+V(2,2)
+          e2 = (V(1,1)-V(2,2))**2+4*V(2,1)*V(1,2)
+          l(2) = (e1+Sqrt(e2))/2 !The two eigen values are evaluated 
+          l(1) = (e1-Sqrt(e2))/2
+          Vd=0.0
+          Vd(1,1) = l(1)
+          Vd(2,2)=l(2)
+          call createEigenVector(l(1), l(2), CC, V)!The eigen vector matrix is formed
+          call inverse2(CC,CC1)
+          call PotentialP(q, Vp)
+          Vpd = matmul(CC1,matmul(Vp,CC))!The derivative of the potential in the adiabatic state is calculated
+ 
+          d12 = Vpd(2,1)/(l(2)-l(1))
+       
+          d=0.0
+          d(2,1) = -d12
+          d(1,2) = d12 
+          rdot =p/m
+          pdot = -Vpd(state,state)
+ 
+          call getcoefDot(coefdot, coef,Vd, rdot, d)
+          call getADot(adot, a, Vd, rdot, d)
 
-                       !       write(*,*) 'Getting started'
-                               !do while(loopcount<1)
-                              do while (abs(q)<10.01) !This is the trajectory loop
-                                        if (t.ge.5000000) exit
-                                        !counter=counter+1
-                                        loopcount=loopcount+1
-!                                        q=q+rdot*h
-!                                        p = p+pdot*h
-!                                        coef=coef+coefdot*h
-!                                        a=a+adot*h
-                                        call propagate(p, q, coef, a, h, state, m)
-                                        call Potential(q,V)!The diabatic potential matrix is evaluated
+          do while (abs(q)<10.01) !This is the trajectory loop
+              if (t.ge.5000000) exit
+              loopcount=loopcount+1
+              call propagate(p, q, coef, a, timestep, state, m)
+              call Potential(q,V)!The diabatic potential matrix is evaluated
 
-                                        e1= V(1,1)+V(2,2)
-                                        e2 = (V(1,1)-V(2,2))**2+4*V(2,1)*V(1,2)
-                                        l(2) = 0.5*(e1+Sqrt(e2)) !The two eigen values are evaluated 
-                                        l(1) = 0.5*(e1-Sqrt(e2))
+              e1= V(1,1)+V(2,2)
+              e2 = (V(1,1)-V(2,2))**2+4*V(2,1)*V(1,2)
+              l(2) = 0.5*(e1+Sqrt(e2)) !The two eigen values are evaluated 
+              l(1) = 0.5*(e1-Sqrt(e2))
 
-                                        Vd(1,1)=l(1)
-                                        Vd(2,2)=l(2)
-                                        
-                                        call createEigenVector(l(1), l(2), CC, V)!The eigen vector matrix is formed
-                                        call inverse2(CC,CC1)
-                                        call PotentialP(q, Vp) !The derivative of the potential is calculated in the adiabatic state
-  
-                                        Vpd = matmul(CC1,matmul(Vp,CC))!The derivative of the potential in the adiabatic state is calculated
-                                        d12 = Vpd(2,1)/(l(2)-l(1))
-         
-                                        d(2,1) = -d12
-                                        d(1,2) = d12 
-                                      !! HACKKKKK
-                                        call au_propagate(p,q,coef, h, state,m, delR,delP, Vd, d, Vpd) 
-!afssh -1          
-!                                        gamma_r = -h*real((-Vpd(state,state)+Vpd(3-state,3-state))*&
-!                                                   &(-delR(state,state) + delR(3-state,3-state))/2.0)
-!                                        gamma_c = -gamma_r 
-!                                        gamma_r = 0.0
+              Vd(1,1)=l(1)
+              Vd(2,2)=l(2)
+                   
+              call createEigenVector(l(1), l(2), CC, V)!The eigen vector matrix is formed
+              call inverse2(CC,CC1)
+              call PotentialP(q, Vp) !The derivative of the potential is calculated in the adiabatic state
+ 
+              Vpd = matmul(CC1,matmul(Vp,CC))!The derivative of the potential in the adiabatic state is calculated
+              d12 = Vpd(2,1)/(l(2)-l(1))
+ 
+              d(2,1) = -d12
+              d(1,2) = d12 
+              call au_propagate(p,q,coef, timestep, state,m, delR,delP, Vd, d, Vpd) 
 !
-!                                        gamma_c = sign(gamma_c, Real( (delR(1,1)-delR(2,2))*(delP(1,1)-delP(2,2)) ))
-!!!afssh -2          
-                                        gamma_r = -h*real((-Vpd(state,state)+Vpd(3-state,3-state))*&
-                                                   &(-delR(state,state) + delR(3-state,3-state))/2.0)
-                                        gamma_c = -gamma_r - 2.0* h*abs(Vpd(1,2)*(delR(3-state,3-state) - delR(state,state)))
-!!!!!DANGER danger
-!!!BE caureful
+             gamma_r = -timestep*real((-Vpd(state,state)+Vpd(3-state,3-state))*&
+                       &(-delR(state,state) + delR(3-state,3-state))/2.0)
+             gamma_c = -gamma_r 
+             gamma_r = 0.0
+
+             gamma_c = sign(gamma_c, Real( (delR(1,1)-delR(2,2))*(delP(1,1)-delP(2,2)) ))
 !
-!                                        ! gamma_c = 0.0
-!
-                                        b21 = -2.0*Realpart(coef(2)*conjg(coef(1)))*p*d(2,1)/m!*Real(Real(conjg(a(2,1))*rdot*d(2,1)))+  2*Real(Aimag(conjg(a(2,1))*Vd(2,1)))/hbar!These are the real deal
-                                        b12 = -2.0*Realpart(coef(1)*conjg(coef(2)))*p*d(1,2)/m!+ 2*Real(Aimag(conjg(a(1,2))*Vd(1,2)))/hbar !These are the probablities to be calculated
-                                        a(1,1)=coef(1)*conjg(coef(1))
-                                        a(2,2)=coef(2)*conjg(coef(2))
-            !                            call init_random_seed()
-            !                            call random_number(random)
-                                         random=ran2(sh_seed)    
-                                         seedy = sh_seed
-                              !          call random_seed(size=rnd_size)   
-                                        call random_seed(put=seedy) 
-                                        call random_number(random)
-                                        !random = 12 
-                                        !read(4,*) random
-                                        if(state.eq.1) then
-                                                  probability = h*b21/abs(a(1,1))
-                                                  if(probability>random) then
-!                                                      write (8,*) 'Hi'                   
-                                                      flag=1
-                                                  end if
-                                        end if
-
-                                       if(state.eq.2) then
-                                                  probability = h*b12/abs(a(2,2))
-                                                  if(probability>random) then
-                                                      flag=1
-                                                  end if
-                                        end if
-                                        if(modulo(loopcount,1)==0) then
-                                                  
-                                               !  write(7,*) t, p, q, Vd(state,state), real(delR(1,1) - delR(2,2)), gamma_c, random
-                                               !  write(8,*) 'delR'
-                                               !  write(8,*) delR
-                                               !  write(8,*) '***********************************'
-                                               !  write(8,*) 'delP'
-                                               !  write(8,*) delP
-                                               !  write(8,*) 'gamma_c'
-                                               !  write(8,*) gamma_c
-
-                                               !  write(8,*) '***********************************'
-                                               !  write(8,*) 'Vpd'
-                                               !  write(8,*) Vpd
-
-                                               !  write(8,*) '***********************************'
-                                               !  write(8,*) coef
-                                               !  write(8,*) '***********************************'
-                                        end if
-          
-                                        if(flag==1) then 
-                                                  if(l(3-state)-l(state)<0.5*((p**2)/m)) then
-                                                                  
-                                                      p = sign(sqrt(p**2 +2*m*(l(state)-l(3-state))),p)
-                                                      state = 3-state
-                                                      pdot=-Vpd(state,state)
-                                                      flag2=1
-                                                  temp3 = Real(delP(state,state))
-                                                  delP(1,1) = delP(1,1) - temp3
-                                                  delP(2,2) = delP(2,2) - temp3
-                                                  temp3 = Real(delR(state,state))
-                                                  delR(1,1) = delR(1,1) - temp3
-                                                  delR(2,2) = delR(2,2) - temp3
-                                                      
-                                                  end if
-                                                  flag=0
-
-                                        end if
-                                         random=ran2(sh_seed)    
-                                         seedy = sh_seed
-                              !          call random_seed(size=rnd_size)   
-                                        call random_seed(put=seedy) 
-                                        call random_number(random)
-                                        
-                                         !call init_random_seed()
-                                         !call random_number(random)
-                                        !write(8,*) 'Random', random
-                                        !call random_seed(get=seedy) 
-                                        !call random_number(random)
-                                           
-                                        if(gamma_c>random) then
-                                              write(88,*) 'collapsed'
-                                              coef(state) = 1.0
-                                              coef(3-state) = 0.0
-                                              stat(4) = stat(4)+1
-                                              delP=0
-                                              delR=0
-                                        end if
-                                        if(gamma_r>random) then
-                                              write(88,*) 'reset'
-                                              stat(5) = stat(5)+1
-                                              delP=0
-                                              delR=0
-                                        end if
-                                        
-                                        t=t+h
-                              end do!The time domain
-                              !write(*,*) 'run done'
-                              if(q>0) then
-                                if(state==1) then
-                                  stat(1)=stat(1)+1
-                                else
-                                  stat(2)=stat(2)+1
-                                end if
-                              end if
-                              if(q<0) then
-                                if(state ==1) then
-                                  stat(3)=stat(3)+1
-                                end if
-                              end if
+!              gamma_r = -timestep*real((-Vpd(state,state)+Vpd(3-state,3-state))*&
+!                       &(-delR(state,state) + delR(3-state,3-state))/2.0)
+!              gamma_c = -gamma_r - 2.0* timestep*abs(Vpd(1,2)*(delR(3-state,3-state) - delR(state,state)))
+              
+              b21 = -2.0*Realpart(coef(2)*conjg(coef(1)))*p*d(2,1)/m!*Real(Real(conjg(a(2,1))*rdot*d(2,1)))+  2*Real(Aimag(conjg(a(2,1))*Vd(2,1)))/hbar!These are the real deal
+              b12 = -2.0*Realpart(coef(1)*conjg(coef(2)))*p*d(1,2)/m!+ 2*Real(Aimag(conjg(a(1,2))*Vd(1,2)))/hbar !These are the probablities to be calculated
+              a(1,1)=coef(1)*conjg(coef(1))
+              a(2,2)=coef(2)*conjg(coef(2))
+              call init_random_seed()
+              call random_number(random)
+              random=ran2(sh_seed)    
+              seedy = sh_seed
+              call random_seed(put=seedy) 
+              call random_number(random)
+              if(state.eq.1) then
+                  probability = timestep*b21/abs(a(1,1))
+                  if(probability>random) then
+                      flag=1
+                  end if
+             end if
+             if(state.eq.2) then
+                 probability = timestep*b12/abs(a(2,2))
+                 if(probability>random) then
+                     flag=1
+                 end if
+             end if
+ 
+             if(flag==1) then 
+                 if(l(3-state)-l(state)<0.5*((p**2)/m)) then
+                     p = sign(sqrt(p**2 +2*m*(l(state)-l(3-state))),p)
+                     state = 3-state
+                     pdot=-Vpd(state,state)
+                     flag2=1
+                     temp3 = Real(delP(state,state))
+                     delP(1,1) = delP(1,1) - temp3
+                     delP(2,2) = delP(2,2) - temp3
+                     temp3 = Real(delR(state,state))
+                     delR(1,1) = delR(1,1) - temp3
+                     delR(2,2) = delR(2,2) - temp3
+                 end if
+                 flag=0
+             end if
+             random=ran2(sh_seed)    
+             seedy = sh_seed
+             call random_seed(put=seedy) 
+             call random_number(random)
+                   
+                      
+             if(gamma_c>random) then
+                 coef(state) = 1.0
+                 coef(3-state) = 0.0
+                 stat(5) = stat(5)+1
+                 delP=0
+                 delR=0
+             end if
+             if(gamma_r>random) then
+                 stat(6) = stat(6)+1
+                 delP=0
+                 delR=0
+             end if
+                   
+             t=t+timestep
+         end do!The time domain
+         !write(*,*) 'run done'
+         if(q>0) then
+           if(state==1) then
+               stat(1)=stat(1)+1
+           else
+               stat(2)=stat(2)+1
+           end if
+         end if
+         if(q<0) then
+           if(state ==1) then
+               stat(3) = stat(3) + 1
+           else
+               stat(4) = stat(4) + 1
+           end if
+         end if
 
 
-                              !write(7,*) 
-                        
-                              if (flag2==1) then
-
-                                      counter=counter+1
-                                      flag2=0
-                              end if
-                      end do !run
+         !write(7,*) 
    
-                      write(90,*) poriginal, counter, stat(1), stat(2), stat(3), stat(4),stat(5)
+         if (flag2==1) then
+
+                 counter=counter+1
+                 flag2=0
+         end if
+ end do !run
+ 
+ write(90,*) poriginal, counter, stat(1), stat(2), stat(3), stat(4),stat(5),stat(6)
 
 
 
-                      poriginal=poriginal+1.0
-                      idex=idex+1
+ poriginal=poriginal+2.0
+ idex=idex+1
 
-                      counter = 0
+ counter = 0
             end do! the p step
 
    close(6)
- ! close(7)
- ! close(8)
-!STOP
 
-!!
-!! 		declarations
-!! N:number of equations, nsteps:number of steps, tstep:length of steps
-!! 		y(1): initial position, y(2):initial velo!ity
-
-
-
-end
+end program
 
 !****************************************************THE MAIN PROGRAM ENDS HERE***************************************************
 
@@ -512,33 +454,17 @@ subroutine getdelRdelPdot(delR,delP,delRdot,delPdot, V, d, Vpd, coef, m, p, stat
            rho(j,k) = conjg(coef(j))*coef(k)
        end do
     end do
-    !write(8,*) 'Write the rho'
-    !write(8,*) rho
-    !write(8,*) 'dForce'
-    !write(8,*) delF
      
     !write(8,*) "Inside the loop"
     II=(0,1.0)
     delRdot = -II*(matmul(V,delR) - matmul(delR,V))
-    !write(8,*) matmul(V,delR)
     delRdot = delRdot  + delP/m
-    !write(*,*) '2'
     delRdot = delRdot - (p/m)*(matmul(d,delR) - matmul(delR,d))
-    !write(8,*) 'comoperator'
-    !write(8,*) -II*V -(p/m)*d
+
     delPdot = -II*(matmul(V,delP) - matmul(delP,V))
-    !write(8,*) ' -II*(matmul(V,delP) - matmul(delP,V))'
-    !write(8,*) -II*(matmul(V,delP) - matmul(delP,V))
     delPdot = delPdot  + 0.5*(matmul(delF,rho) + matmul(rho,delF))
-    !write(8,*) '(matmul(delF,rho) + matmul(rho,delF))*0.5'
-    !write(8,*)  (matmul(delF,rho) + matmul(rho,delF))*0.5
     delPdot = delPdot - (p/m)*(matmul(d,delP) - matmul(delP,d))
-   ! temp = delRdot(state,state)
-   ! delRdot(1,1) = delR(1,1) - temp
-   ! delRdot(2,2) = delR(2,2) - temp
-   ! temp = delPdot(state,state)
-   ! delPdot(1,1) = delP(1,1) - temp
-   ! delPdot(2,2) = delP(2,2) - temp
+
  end subroutine getdelRdelPdot
   
 
@@ -558,9 +484,6 @@ subroutine getcoefDot(coefdot, coef ,V, rdot, d)
     coefdot(1)=coef(1)*V(1,1)/(II *hbar) - coef(2)*rdot*d(1,2) !this is test for the propagator for the coeeficients
 
     coefdot(2)=coef(2)*V(2,2)/(II *hbar) + coef(1)*rdot*d(1,2)
-
-!    coefdot(1) = -II*coef(2)
-!    coefdot(2) = -II*coef(1)
 
 end subroutine getcoefDot
 
@@ -590,29 +513,13 @@ end subroutine getAdot
 
 Subroutine Potentialp(x, Vp)
 implicit none
-Real*8, intent(IN):: x
-Real*8, dimension(2,2), intent(INOUT):: Vp
-!    IMPLICIT none
-!
-!		de!larations
-!    REAL*8, intent(in) :: x
-!    Real*8, intent(inout),dimension(2,2) ::Vp
-!
- !   if(x>0) then 
- !     Vp(1,1) = 0.01* exp(-1.6*x)*1.6
-!    else
-!      Vp(1,1) = 0.01*(1.6*exp(1.6*x))
-!    end if
-!    Vp(1,2) = -0.005*(exp(-(x**2)))*2*x
-!    Vp(2,1)=Vp(1,2)
-!    Vp(2,2) = -Vp(1,1)
-call Potentialpc(x, Vp)
+    Real*8, intent(IN):: x
+    Real*8, dimension(2,2), intent(INOUT):: Vp
+    call Potentialpc(x, Vp)
 END subroutine Potentialp 
 
 Subroutine Potentialpa(x, Vp)
     IMPLICIT none
-!
-!		de!larations
     REAL*8, intent(in) :: x
     Real*8, intent(inout),dimension(2,2) ::Vp
 !
@@ -629,8 +536,6 @@ END subroutine Potentialpa
 
 Subroutine Potentialpb(x, V)
     IMPLICIT none
-!
-!		de!larations
     REAL*8, intent(in) :: x
     Real*8, intent(inout),dimension(2,2) ::V
     Real*8 A, B, C, D, E0
@@ -675,23 +580,10 @@ END subroutine Potentialpc
 
 Subroutine Potential(x, V)
 !    IMPLICIT none
-implicit none
-Real*8, intent(IN):: x
-Real*8, dimension(2,2), intent(INOUT):: V
-!
-!		de!larations
-!   REAL*8, intent(in) :: x
-!   Real*8, intent(inout),dimension(2,2) ::V
-!
-!    if(x>0) then 
-!      V(1,1) = 0.01*(1- exp(-1.6*x))
-!    else
-!    V(1,1) = -0.01*(1- exp(1.6*x))
-!    end if
-!    V(1,2) = 0.005*(exp(-(x**2)))
-!    V(2,1)=V(1,2)
-!    V(2,2) = -V(1,1)
-call Potentialc(x,V)
+    implicit none
+    Real*8, intent(IN):: x
+    Real*8, dimension(2,2), intent(INOUT):: V
+    call Potentialc(x,V)
 END subroutine Potential 
 
 Subroutine Potentiala(x, V)
@@ -918,3 +810,46 @@ function ran2(idum)
   ran2 = min(am*iy,rnmx)
 
 end function ran2
+  !open(8, File = 'gibberish.dat')
+  !write(7,*) '#t, p, q, Vd(state,state), Vd(3-state,3-state), probability, pop(1)'
+  !write(7,*) '#t, p, q, Vd(state,state), real(delR(1,1) - delR(2,2)), gamma_c, random'
+
+
+
+   ! temp = delRdot(state,state)
+   ! delRdot(1,1) = delR(1,1) - temp
+   ! delRdot(2,2) = delR(2,2) - temp
+   ! temp = delPdot(state,state)
+   ! delPdot(1,1) = delP(1,1) - temp
+   ! delPdot(2,2) = delP(2,2) - temp
+
+
+
+
+!    coefdot(1) = -II*coef(2)
+!    coefdot(2) = -II*coef(1)
+
+    !write(8,*) 'Write the rho'
+    !write(8,*) rho
+    !write(8,*) 'dForce'
+    !write(8,*) delF
+
+
+    !write(8,*) '(matmul(delF,rho) + matmul(rho,delF))*0.5'
+    !write(8,*)  (matmul(delF,rho) + matmul(rho,delF))*0.5
+             !  write(7,*) t, p, q, Vd(state,state), real(delR(1,1) - delR(2,2)), gamma_c, random
+             !  write(8,*) 'delR'
+             !  write(8,*) delR
+             !  write(8,*) '***********************************'
+                          !  write(8,*) 'delP'
+                          !  write(8,*) delP
+                          !  write(8,*) 'gamma_c'
+                          !  write(8,*) gamma_c
+
+                          !  write(8,*) '***********************************'
+                          !  write(8,*) 'Vpd'
+                          !  write(8,*) Vpd
+
+                          !  write(8,*) '***********************************'
+                          !  write(8,*) coef
+                          !  write(8,*) '***********************************'

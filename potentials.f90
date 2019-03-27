@@ -163,7 +163,7 @@ subroutine modelxp(x,V)
   
   V(1,1) = A*B*(1/((cosh(B*x))**2) + 1/((cosh(B*(x+D)))**2))
   V(2,2) = -A*B*(1/((cosh(B*x))**2) + 1/((cosh(B*(x-D)))**2))
-  V(2,2) = -A*B*(1/((cosh(B*(x+D)))**2) - 1/((cosh(B*(x-D)))**2))
+  V(3,3) = -A*B*(1/((cosh(B*(x+D)))**2) - 1/((cosh(B*(x-D)))**2))
 
   V(1,2) = -2*C*x*exp(-x*x)
   V(1,3) = -2*(x+D)*C*exp(-(x+D)*(x+D))

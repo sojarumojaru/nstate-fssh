@@ -9,14 +9,15 @@ subroutine  electronic_evaluate(p,q,V,Vp,Vd,Vpd,nacv,nstates,active,vl)
   
   complex*16, allocatable :: VR(:,:),c_matrix_temp(:,:), WORK(:),Vcopy(:,:),vpcopy(:,:)
   real*8 alpha, beta, thresh
-  real*8, allocatable ::  RWORK(:)
+  real*8, allocatable ::  RWORK(:),eigen(:)
   integer i,j,info,lwork
   logical swapped
   
   allocate(c_matrix_temp(nstates,nstates))
   allocate(Vcopy(nstates,nstates))
   allocate(Vpcopy(nstates,nstates))
-  allocate(RWORK(2*nstates),WORK(2*nstates),VR(nstates,nstates))
+  allocate(eigen(nstates))
+  allocate(RWORK(3*nstates),WORK(2*nstates),VR(nstates,nstates))
   thresh = 1d-6
   lwork = 2*nstates
   call potentiala(q,V)
@@ -25,29 +26,34 @@ subroutine  electronic_evaluate(p,q,V,Vp,Vd,Vpd,nacv,nstates,active,vl)
 
   Vpcopy = Vp
  
-  call zgeev('V','N',nstates,V, nstates, Vd, VL, nstates, VR, nstates,&
-  &        WORK, lwork, RWORK, info )
-  V = Vcopy
+  call zheev('V','U',nstates,Vcopy, nstates, eigen, work,lwork,rwork,info)
+!  V = Vcopy
 
   alpha = 1d0
   beta = 0d0
-  call sorteigen(nstates,Vd,Vl,swapped)
+!  call sorteigen(nstates,Vd,Vl,swapped)
 
-  call zgemm('N','N',nstates,nstates,nstates,alpha,vl,nstates,&
-       & Vpcopy,nstates,beta,c_matrix_temp,nstates)
+  call zgemm('N','N',nstates,nstates,nstates,alpha,vcopy,nstates,&
+       & Vp,nstates,beta,c_matrix_temp,nstates)
 
   call zgemm('N','C',nstates,nstates,nstates,alpha,c_matrix_temp,nstates,&
-       & vl,nstates,beta,Vpd,nstates)
-
+       & vcopy,nstates,beta,Vpd,nstates)
+  Vl = V
   nacv = 0d0
   do i = 1, nstates
+      Vd(i) = eigen(i)
       do j = 1,nstates
           if(i.eq.j) cycle
           nacv(i,j) = (Vpd(i,j))/(Vd(j) - Vd(i))
-!          if(swapped) nacv(i,j) = -nacv(i,j)
       end do
   end do
-
+!      Write(*,*) 'Vpd'
+!      write(*,'(2e18.10)') Vpd
+!      Write(*,*) 'eigen'
+!      write(*,'(2e18.10)') eigen
+!      write(*,'(a)') 'nacv'
+!      write(*,'(2e18.10)') nacv
+!
 end subroutine electronic_evaluate
 
 subroutine sorteigen(nstates,Vd,Vl,swapped)
@@ -108,8 +114,11 @@ subroutine classical_propagate(p,q,mass,force,active,activeold,nacv,kepara,&
   nacl = 0
   if(activeold.eq.active) then
       vel = p/mass
-      acc = real(force(active,active))/mass
+      acc = -real(force(active,active))/mass
       vel = vel + acc*timstp
+!      write(*,'(a)') 'nacv'
+!      write(*,'(2e18.10)') nacv
+      
       do ij = 1,nstates
           do ii = ij,nstates
               icounter = icounter+1
@@ -151,7 +160,7 @@ subroutine classical_propagate(p,q,mass,force,active,activeold,nacv,kepara,&
       q = q + vel*timstp
       p = mass*vel
   end if
-  write(*,'(5e15.6)') p,q, kepara,pe,totale
+!  write(*,'(5e15.6)') p,q, kepara,pe,totale
 end subroutine classical_propagate
          
 
@@ -187,18 +196,30 @@ subroutine electronic_propagate(densmat,Vd,nacl,timstp,nstates)
   complex*16, allocatable :: vr(:,:), work(:), vl(:,:), w(:)
   real*8, allocatable ::  rwork(:)
   integer i,j,info,lwork
-  
-  allocate(rwork(2*nstates),work(2*nstates),vr(nstates,nstates),vl(nstates,nstates))
-  lwork = 2*nstates
+ 
+  complex*16 minusi
+ 
+  allocate(rwork(4*nstates),work(4*nstates),vr(nstates,nstates),vl(nstates,nstates))
+  lwork = 4*nstates
 
   allocate(b_matrix(nstates,nstates))
-  allocate(c_matrix_temp(nstates,nstates))
   allocate(c_matrix(nstates,nstates))
+  allocate(c_matrix_temp(nstates,nstates))
   allocate(densmatnew(nstates,nstates))
   allocate(w(nstates))
-
+  
+  minusi = (0d0,-1d0)
   counter = 0
+  b_matrix = 0d0
+  c_matrix_temp = 0d0
+  densmatnew = 0d0
+  c_matrix = 0d0
+  w = 0d0
+  
+  vl = 0d0
 
+!  write(*,'(a)') 'nacl'
+!  write(*,'(2e18.10)') nacl
   do it = 1, nstates
       do is = it, nstates
           counter=counter+1
@@ -211,17 +232,19 @@ subroutine electronic_propagate(densmat,Vd,nacl,timstp,nstates)
       b_matrix(it,it) = b_matrix(it,it) + Vd(it)
   end do
 
-
-  c_matrix = 0d0
-
+!  write(*,'(a)') 'b_matrix'
+!  write(*,'(2e18.10)') b_matrix
   call zgeev('V','N',nstates,b_matrix,nstates,w,vl,nstates,vr,&
        & nstates,work,(2*(nstates)),rwork,info )
-
+!  write(*,'(a)') 'info'
+!  write(*,'(i3)') info
+!  write(*,*) 'w'
+!  write(*,'(2e18.10)') w
 
   do is=1,nstates
-      c_matrix(is,is)=exp((0.0,-1.0)*w(is)*timstp)
+      c_matrix(is,is)=exp(minusi*w(is)*timstp)
   end do
-
+  
   alpha=1d0
   beta=0d0
   ! $\rho(t+\Delta t/2) = e^{iH\Delta t/2}\rho(t)e^{-iH\Delta t/2}
@@ -230,13 +253,18 @@ subroutine electronic_propagate(densmat,Vd,nacl,timstp,nstates)
   call zgemm('N','C',nstates,nstates,nstates,alpha,c_matrix_temp,nstates,&
        vl,nstates,beta,c_matrix,nstates)
 
-
+!  write(*,*) 'c_matrix after'
+!  write(*,'(2e18.10)') c_matrix
+!  write(*,*) 'densmat before'
+!  write(*,'(2e18.10)') densmat
   call zgemm('N','N',nstates,nstates,nstates,alpha,c_matrix,nstates,&
        densmat,nstates,beta,densmatnew,nstates)
 
   call zgemm('N','C',nstates,nstates,nstates,alpha,densmatnew,nstates,&
        c_matrix,nstates,beta,densmat,nstates)
 
+!  write(*,*) 'densmat after'
+!  write(*,'(2e18.10)') densmat
 
 
 end subroutine electronic_propagate

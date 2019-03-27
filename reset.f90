@@ -34,11 +34,11 @@ PROGRAM trajau
   open(88, File = 'collapse_')
   open(65, File = 'Force')
   open(69, File = 'print_dRdP')
-  timestep=0.4
+  timestep=1.0
   idex=1
   poriginal =10.0
   
-  maxrun = 10
+  maxrun = 1
   write(90,*) 'poriginal, counter, lowtrans, uptrans, lowref, upref, coll, reset'
   do while(poriginal.le.10.0)
 
@@ -197,7 +197,8 @@ PROGRAM trajau
 !             seedy = sh_seed
 !             call random_seed(put=seedy) 
 !             call random_number(random)
-!             write(8,*) q, gamma_c, gamma_r,random
+             write(8,*) q, t, gamma_c, gamma_r,random
+             random = 1.0
              if(gamma_c>random) then
                  coef(state) = 1.0
                  coef(3-state) = 0.0
