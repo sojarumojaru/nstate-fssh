@@ -15,10 +15,10 @@ program frog_batch
   logical terminate, testmode
 
   testmode = .false.
-  p_initial = 10.0
-  p_final = 10.1
+  p_initial = 3.0
+  p_final = 3.1
   p_step = 0.5
-  tmax = 10000
+  tmax = 100000
   timstp = 1.0
   nruns = 1
   mass = 2000.0
@@ -48,7 +48,7 @@ program frog_batch
  
   allocate(stat(4))
 
-  testmode = .false.
+  testmode = .true.
   if(testmode) then
       scr = -1.0
 
@@ -57,7 +57,8 @@ program frog_batch
 
           call electronic_evaluate(p,q,V,Vp,Vd,Vpd,nacv,nstates,active,vl)
           
-          write(*,'(7e18.10)') q, real(Vd(1)), real(Vd(2)), real(Vp(1,1)), real(Vp(1,2)), real(Vpd(1,1)), real(nacv(1,2))
+          write(*,'(6e18.10)') q, real(Vd(1)), real(Vd(2)), real(nacv(1,2)),&
+           & real(Vpd(1,1)), real(Vpd(2,2))
 !          write(*,*) ' V '
 !          write(*,'(2e18.10)') V
 !          write(*,*) ' Vd '
@@ -75,73 +76,68 @@ program frog_batch
      end do
      
   end if
-  write(*,'(a)')  '#p,     trans_up,       refl_up,    trans_low,     refl_low'
 
-  do while(p_initial < p_final) !initial momentum loop
-      stat = 0
-      irun = 0 
-      do while(irun<nruns) !indivudual trajectory loop
-         irun = irun + 1
-          call initialize(p,q,densmat,active,p_initial,nstates)
-          terminate = .false.
-          active = 1
-          activeold = active
-          time = 0
-          do while((time<tmax).and.(.not.terminate)) 
-              
-              call electronic_evaluate(p,q,V,Vp,Vd,Vpd,nacv,nstates,active,vl)
-
-              call classical_propagate(p,q,mass,Vpd,active,&
-              &    activeold,nacv,kepara,timstp,Vd,nstates,nacl)
-
-              call electronic_propagate(densmat,Vd,nacl,(timstp/2.0),nstates)
-
+!  do while(p_initial < p_final) !initial momentum loop
+!      stat = 0
+!      irun = 0 
+!      do while(irun<nruns) !indivudual trajectory loop
+!         irun = irun + 1
+!          call initialize(p,q,densmat,active,p_initial,nstates)
+!          terminate = .false.
+!          active = 1
+!          activeold = active
+!          time = 0
+!          do while((time<tmax).and.(.not.terminate)) 
+!              
+!              call electronic_evaluate(p,q,V,Vp,Vd,Vpd,nacv,nstates,active,vl)
+!
+!              call classical_propagate(p,q,mass,Vpd,active,&
+!              &    activeold,nacv,kepara,timstp,Vd,nstates,nacl)
+!
+!              call electronic_propagate(densmat,Vd,nacl,(timstp/2.0),nstates)
+!
 !              call aush_propagate(densmat,nstates,delR,delP,Vpd, &
 !              &    gamma_collapse,gamma_reset,mass,nacl,Vd,timstp,active)
-              do is = 1,nstates
-                  do it = 1,nstates
-                      b_matrix_temp(is,it) = nacv(is,it)
-                  end do
-              end do
-              do is =1,nstates
-                  b_matrix_temp(is,is) = b_matrix_temp(is,is)+(0,1)*Vd(is)
-              end do
-      !        write(*,*) 'population 11'
-!              write(*,'(a,3e18.10)') 'pop', real(densmat(1,1)), real(densmat(2,2)), abs(densmat(1,2))
-              do is=1,nstates
-                  if(active.eq.is) cycle
-                  proba(active,is)=real(densmat(active,is)*b_matrix_temp(is,active))
-                  proba(active,is)=(2.0)*timstp*proba(active,is)/real(densmat(active,active))
-              end do
-!              write(*,'(a)') 'proba'
-!              write(*,'(2e18.10)') proba
-!              if(real(densmat(2,2))>0.00001) write(*,*) 'hello'
-
-              call electronic_propagate(densmat,Vd,nacl,(timstp/2.0),nstates)
-
-              call random_number(xranf)
-              if( proba(1,2) > xranf) write(*,'(a,3e18.10)') 'hello', q, proba(1,2) ,xranf
-
-              call select_newstate(active,xranf,proba,nstates)
+!              do is = 1,nstates
+!                  do it = 1,nstates
+!                      b_matrix_temp(is,it) = nacv(is,it)
+!                  end do
+!              end do
+!              do is =1,nstates
+!                  b_matrix_temp(is,is) = b_matrix_temp(is,is)+(0,1)*Vd(is)
+!              end do
+!
+!              do is=1,nstates
+!                  if(active.eq.is) cycle
+!                  proba(active,is)=real(densmat(active,is)*b_matrix_temp(is,active))
+!                  proba(active,is)=(2.0)*timstp*proba(active,is)/real(densmat(active,active))
+!              end do
+!!              if(real(densmat(2,2))>0.00001) write(*,*) 'hello'
+!
+!              call electronic_propagate(densmat,Vd,nacl,(timstp/2.0),nstates)
+!
+!              call random_number(xranf)
+!
+!              call select_newstate(active,xranf,proba,nstates)
 !              if (active.ne.activeold)  then 
 !                  call au_hop(delR,delP,nstates,active)
 !              else
 !                  call au_collapse(gamma_reset,gamma_collapse,densmat,delR,&
 !                       & delP,nstates,active)
 !              end if
-              time = time + timstp
-              if ((abs(q)) > 11.0) then
-                  terminate = .true.
-              end if
-          end do! time
-         if ((q.gt.10.0).and.(active.eq.2)) stat(1) = stat(1) + 1
-          if ((q.lt.-10.0).and.(active.eq.2)) stat(2) = stat(2) + 1
-          if ((q.gt.10.0).and.(active.eq.1)) stat(3) = stat(3) + 1
-          if ((q.lt.-10.0).and.(active.eq.1)) stat(4) = stat(4) + 1
-      end do ! run
-      write(*,'(e15.6,4i12)') p_initial, stat
-      p_initial = p_initial + p_step
-  end do! momentum
+!              time = time + timstp
+!              if ((abs(q)) > 11.0) then
+!                  terminate = .true.
+!              end if
+!          end do! time
+!         if ((q.gt.10.0).and.(active.eq.2)) stat(1) = stat(1) + 1
+!          if ((q.lt.-10.0).and.(active.eq.2)) stat(2) = stat(2) + 1
+!          if ((q.gt.10.0).and.(active.eq.1)) stat(3) = stat(3) + 1
+!          if ((q.lt.-10.0).and.(active.eq.1)) stat(4) = stat(4) + 1
+!      end do ! run
+!      write(*,'(e15.6,4i12)') p_initial, stat
+!      p_initial = p_initial + p_step
+!  end do! momentum
 
 end program
 
