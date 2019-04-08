@@ -1,6 +1,9 @@
-subroutine  electronic_evaluate(p,q,V,Vp,Vd,Vpd,nacv,nstates,active,vl)
+subroutine  electronic_evaluate(p,q,V,Vp,Vd,Vpd,nacv,ndim,&
+                                & nstates,active,vl)
+
+  !! One dimension only
   implicit none
-  integer, intent(in) :: nstates,active
+  integer, intent(in) :: nstates,active,ndim
   real*8, intent(in) :: p,q
   complex*16, intent(inout) :: V(nstates,nstates), Vd(nstates), Vp(nstates, nstates)
   complex*16, intent(inout) :: nacv(nstates,nstates), vl(nstates,nstates),Vpd(nstates,nstates)
@@ -10,7 +13,7 @@ subroutine  electronic_evaluate(p,q,V,Vp,Vd,Vpd,nacv,nstates,active,vl)
   complex*16, allocatable :: VR(:,:),c_matrix_temp(:,:), WORK(:),Vcopy(:,:),vpcopy(:,:)
   real*8 alpha, beta, thresh
   real*8, allocatable ::  RWORK(:),eigen(:)
-  integer i,j,info,lwork
+  integer i,j,info,lwork,idime
   logical swapped
   
   allocate(c_matrix_temp(nstates,nstates))
@@ -47,13 +50,6 @@ subroutine  electronic_evaluate(p,q,V,Vp,Vd,Vpd,nacv,nstates,active,vl)
           nacv(i,j) = (Vpd(i,j))/(Vd(j) - Vd(i))
       end do
   end do
-!      Write(*,*) 'Vpd'
-!      write(*,'(2e18.10)') Vpd
-!      Write(*,*) 'eigen'
-!      write(*,'(2e18.10)') eigen
-!      write(*,'(a)') 'nacv'
-!      write(*,'(2e18.10)') nacv
-!
 end subroutine electronic_evaluate
 
 subroutine sorteigen(nstates,Vd,Vl,swapped)
@@ -95,67 +91,84 @@ end subroutine sorteigen
 
 
 subroutine classical_propagate(p,q,mass,force,active,activeold,nacv,kepara,&
-           & timstp,Vd,nstates,nacl)
+           & timstp,Vd,nstates,ndim,nacl)
   implicit none
   
-  integer, intent(in) :: nstates
+  integer, intent(in) :: nstates,ndim
   integer, intent(inout) :: active,activeold
-  real*8, intent(inout) :: p,q,kepara
+  real*8, intent(inout) :: p(ndim),q(ndim),kepara
   real*8, intent(in) :: mass,timstp
-  complex*16, intent(in) :: force(nstates,nstates), nacv(nstates,nstates)
+  complex*16, intent(in) :: force(nstates,nstates,ndim), nacv(nstates,nstates,ndim)
   complex*16, intent(in) :: Vd(nstates)
   complex*16, intent(inout) :: nacl((nstates*(nstates+1))/2)
 
   !! Local variables
-  
-  real*8 vel,acc, exci,sgn,pe,totale
-  integer ii, ij, icounter
+  real*8, allocatable :: vel(:), acc(:)
+  real*8 exci,sgn,pe,totale
+  integer ii,ij,icounter,idime
+  allocate(vel(ndim))
+  allocate(acc(ndim))
   icounter = 0
   nacl = 0
   if(activeold.eq.active) then
       vel = p/mass
-      acc = -real(force(active,active))/mass
+      acc(1) = -real(force(active,active,1))/mass
       vel = vel + acc*timstp
-!      write(*,'(a)') 'nacv'
-!      write(*,'(2e18.10)') nacv
       
       do ij = 1,nstates
           do ii = ij,nstates
               icounter = icounter+1
-              nacl(icounter)=nacl(icounter)+(vel-acc*timstp/2.0)*nacv(ii,ij)
+              do idime = 1,ndim
+                  nacl(icounter)=nacl(icounter)+(vel(idime)-acc(idime)*timstp/2.0)*nacv(ii,ij,idime)
+              end do
           end do
       end do
       q = q + vel*timstp
       p = mass*vel
-      kepara = 0.5*(vel-acc*timstp/2.0)*(vel-acc*timstp/2.0)*mass
+      kepara = 0
+      do idime = 1,ndim
+          kepara = kepara + 0.5*(vel(idime)-acc(idime)*timstp/2.0)*(vel(idime)-acc(idime)*timstp/2.0)*mass
+      end do
       pe = real(Vd(active))
       totale = kepara + pe
   end if 
 
   if(active.ne.activeold) then
-      vel = p/mass
-      acc = -force(activeold,activeold)/mass
-      vel = vel + acc*timstp*0.5
+      do idime = 1,ndim
+          vel(idime) = p(idime)/mass
+          acc(idime) = -force(activeold,activeold,idime)/mass
+          vel(idime) = vel(idime) + acc(idime)*timstp*0.5
+      end do
       icounter = 0
       do ij = 1,nstates
           do ii = ij,nstates
               icounter = icounter+1
-              nacl(icounter)=nacl(icounter)+(vel)*nacv(ii,ij)
+              do idime = 1,ndim
+                  nacl(icounter)=nacl(icounter)+(vel(idime))*nacv(ii,ij,idime)
+              end do
           end do
       end do
-      kepara = 0.5*vel*vel*mass
+      kepara = 0
+      do idime = 1,ndim
+          kepara = kepara + 0.5*vel(idime)*vel(idime)*mass
+      end do
       exci = real(Vd(active)) - real(Vd(activeold))
-      if (exci > 0) sgn = 1.0
-      if (exci < 0) sgn = -1.0
+      !write(*,'(4f12.5)') q,active,exci,kepara
+      if (exci > 0) sgn = -1.0
+      if (exci < 0) sgn = 1.0
       if(kepara.gt.exci) then
           activeold = active
-          acc = -real(force(activeold,activeold))/mass
-          vel = vel + acc*timstp*0.5 + sgn*sqrt(2.0*exci/mass)
+          do idime = 1,ndim
+              acc(idime) = -real(force(activeold,activeold,idime))/mass
+              vel(idime) = vel(idime) + acc(idime)*timstp*0.5 + sgn*sqrt(2.0*abs(exci)/mass)
+          end do
           
       else
           active = activeold
-          acc = -real(force(activeold,activeold))/mass
-          vel = vel + acc*timstp*0.5 
+          do idime = 1,ndim
+              acc(idime) = -real(force(active,active,idime))/mass
+              vel(idime) = vel(idime) + acc(idime)*timstp*0.5 
+          end do
       end if
       q = q + vel*timstp
       p = mass*vel
@@ -278,12 +291,12 @@ end subroutine electronic_propagate
 
 
 
-subroutine aush_propagate(densmat,nstates,delR,delP,Vpd,gamma_collapse,&
+subroutine aush_propagate(densmat,nstates,ndim,delR,delP,Vpd,gamma_collapse,&
            & gamma_reset,mass,nacl,exci,timstp,ifstatenow)
 
   implicit none 
 
-  integer, intent(in) :: nstates
+  integer, intent(in) :: nstates,ndim
   
 
   complex*16, intent(inout) :: delR(nstates,nstates)

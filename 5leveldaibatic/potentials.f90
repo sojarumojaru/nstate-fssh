@@ -173,3 +173,57 @@ subroutine modelxp(x,V)
   V(3,1) = V(1,3)
   V(3,2) = V(2,3)
 end subroutine
+
+
+subroutine Holstein(q,V,mass,omega)
+  implicit none
+  
+  real*8, intent(in) :: q(5), mass, omega
+  complex*16, intent(inout) :: V(5,5)
+  real*8 Vc, g, classpe, au2rcm
+  integer it
+  au2rcm=219474.63067d0
+  V = 0
+  Vc = 50/au2rcm
+  g = 3091.8/au2rcm
+  classpe = 0
+  do it = 1,5
+      classpe = classpe + 0.5*mass*omega**2*q(it)**2
+      V(it,it) = q(it)*g
+      if ((it-1) >0) V(it,it-1) = Vc
+      if ((it+1) <6) V(it,it+1) = Vc
+  end do
+
+  do it = 1,5
+     V(it,it) = V(it,it) + classpe
+  end do
+
+end subroutine
+
+
+subroutine HolsteinGrad(q,V,mass,omega)
+  implicit none
+  
+  real*8, intent(in) :: q(5), mass, omega
+  complex*16, intent(inout) :: V(5,5,5)
+  real*8 Vc, g, classpe, au2rcm
+  integer it
+  V = 0
+  au2rcm=219474.63067d0
+  Vc = 50/au2rcm
+  g = 3091.8/au2rcm
+  classpe = 0
+  do it = 1,5
+      V(it,it,it) = g + mass*omega**2*q(it)
+  end do
+
+end subroutine
+
+
+
+
+
+
+
+
+

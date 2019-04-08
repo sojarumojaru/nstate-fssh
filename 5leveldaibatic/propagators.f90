@@ -1,53 +1,61 @@
-subroutine  electronic_evaluate(p,q,V,Vp,Vd,Vpd,nacv,ndim,&
+subroutine  electronic_evaluate(mass,p,q,V,Vp,Vd,Vpd,nacv,ndim,&
                                 & nstates,active,vl)
 
   !! One dimension only
   implicit none
   integer, intent(in) :: nstates,active,ndim
-  real*8, intent(in) :: p,q
-  complex*16, intent(inout) :: V(nstates,nstates), Vd(nstates), Vp(nstates, nstates)
-  complex*16, intent(inout) :: nacv(nstates,nstates), vl(nstates,nstates),Vpd(nstates,nstates)
+  real*8, intent(in) :: mass, p(ndim),q(ndim)
+  complex*16, intent(inout) :: V(nstates,nstates), Vd(nstates),Vp(nstates, nstates,ndim)
+  complex*16, intent(inout) :: nacv(nstates,nstates,ndim), vl(nstates,nstates),Vpd(nstates,nstates,ndim)
 
   !! Local variables
   
-  complex*16, allocatable :: VR(:,:),c_matrix_temp(:,:), WORK(:),Vcopy(:,:),vpcopy(:,:)
-  real*8 alpha, beta, thresh
+  complex*16, allocatable :: VR(:,:),c_matrix_temp(:,:)
+  complex*16, allocatable :: WORK(:),Vcopy(:,:),vpcopy(:,:,:)
+  real*8 alpha, beta, thresh,omega,au2rcm
   real*8, allocatable ::  RWORK(:),eigen(:)
-  integer i,j,info,lwork,idime
+  integer i,j,info,lwork,idime,it
   logical swapped
   
   allocate(c_matrix_temp(nstates,nstates))
   allocate(Vcopy(nstates,nstates))
-  allocate(Vpcopy(nstates,nstates))
+  allocate(Vpcopy(nstates,nstates,ndim))
   allocate(eigen(nstates))
   allocate(RWORK(3*nstates),WORK(2*nstates),VR(nstates,nstates))
   thresh = 1d-6
+  au2rcm=219474.63067d0
   lwork = 2*nstates
-  call potentiala(q,V)
-  call potentialpa(q,Vp)
-  Vcopy = V
+!  call potentiala(q,V)
+!  call potentialpa(q,Vp)
 
+  au2rcm=219474.63067d0
+  omega = 200.0/au2rcm
+  call Holstein(q,V,mass,omega)
+  call HolsteinGrad(q,Vp,mass,omega)
+  Vcopy = V
   Vpcopy = Vp
  
-  call zheev('V','U',nstates,Vcopy, nstates, eigen, work,lwork,rwork,info)
-!  V = Vcopy
+  call zheev('V','U',nstates , Vcopy, nstates, eigen, work,lwork,rwork,info)
 
   alpha = 1d0
   beta = 0d0
 !  call sorteigen(nstates,Vd,Vl,swapped)
+  do it = 1,ndim
+       call zgemm('N','N',nstates,nstates,nstates,alpha,vcopy,nstates,&
+          & Vp(:,:,it),nstates,beta,c_matrix_temp,nstates)
 
-  call zgemm('N','N',nstates,nstates,nstates,alpha,vcopy,nstates,&
-       & Vp,nstates,beta,c_matrix_temp,nstates)
-
-  call zgemm('N','C',nstates,nstates,nstates,alpha,c_matrix_temp,nstates,&
-       & vcopy,nstates,beta,Vpd,nstates)
+       call zgemm('N','C',nstates,nstates,nstates,alpha,c_matrix_temp,nstates,&
+          & vcopy,nstates,beta,Vpd(:,:,it),nstates)
+  end do
   Vl = V
   nacv = 0d0
   do i = 1, nstates
       Vd(i) = eigen(i)
       do j = 1,nstates
           if(i.eq.j) cycle
-          nacv(i,j) = (Vpd(i,j))/(Vd(j) - Vd(i))
+          do it = 1,ndim
+              nacv(i,j,it) = (Vpd(i,j,it))/(Vd(j) - Vd(i))
+          end do
       end do
   end do
 end subroutine electronic_evaluate
@@ -82,14 +90,6 @@ subroutine sorteigen(nstates,Vd,Vl,swapped)
 
 end subroutine sorteigen
 
-
-
-
-
-
-
-
-
 subroutine classical_propagate(p,q,mass,force,active,activeold,nacv,kepara,&
            & timstp,Vd,nstates,ndim,nacl)
   implicit none
@@ -104,7 +104,7 @@ subroutine classical_propagate(p,q,mass,force,active,activeold,nacv,kepara,&
 
   !! Local variables
   real*8, allocatable :: vel(:), acc(:)
-  real*8 exci,sgn,pe,totale
+  real*8 exci,sgn,pote,totale
   integer ii,ij,icounter,idime
   allocate(vel(ndim))
   allocate(acc(ndim))
@@ -112,7 +112,7 @@ subroutine classical_propagate(p,q,mass,force,active,activeold,nacv,kepara,&
   nacl = 0
   if(activeold.eq.active) then
       vel = p/mass
-      acc(1) = -real(force(active,active,1))/mass
+      acc= -real(force(active,active,:))/mass
       vel = vel + acc*timstp
       
       do ij = 1,nstates
@@ -129,8 +129,8 @@ subroutine classical_propagate(p,q,mass,force,active,activeold,nacv,kepara,&
       do idime = 1,ndim
           kepara = kepara + 0.5*(vel(idime)-acc(idime)*timstp/2.0)*(vel(idime)-acc(idime)*timstp/2.0)*mass
       end do
-      pe = real(Vd(active))
-      totale = kepara + pe
+      pote = real(Vd(active))
+      totale = kepara + pote
   end if 
 
   if(active.ne.activeold) then
@@ -153,7 +153,6 @@ subroutine classical_propagate(p,q,mass,force,active,activeold,nacv,kepara,&
           kepara = kepara + 0.5*vel(idime)*vel(idime)*mass
       end do
       exci = real(Vd(active)) - real(Vd(activeold))
-      !write(*,'(4f12.5)') q,active,exci,kepara
       if (exci > 0) sgn = -1.0
       if (exci < 0) sgn = 1.0
       if(kepara.gt.exci) then
@@ -173,22 +172,9 @@ subroutine classical_propagate(p,q,mass,force,active,activeold,nacv,kepara,&
       q = q + vel*timstp
       p = mass*vel
   end if
-!  write(*,'(5e15.6)') p,q, kepara,pe,totale
+!  write(*,'(a)') '#p(1),q(1), kepara,pote,totale,active'
+!  write(*,'(5e15.6,i3)') p(1),q(1), kepara,pote,totale,active
 end subroutine classical_propagate
-         
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 subroutine electronic_propagate(densmat,Vd,nacl,timstp,nstates)
@@ -278,7 +264,6 @@ subroutine electronic_propagate(densmat,Vd,nacl,timstp,nstates)
 
 !  write(*,*) 'densmat after'
 !  write(*,'(2e18.10)') densmat
-
 
 end subroutine electronic_propagate
 

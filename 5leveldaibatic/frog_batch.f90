@@ -4,9 +4,9 @@ program frog_batch
   real*8 time,scr,onedq
   real*8, allocatable :: proba(:,:), gamma_collapse(:),gamma_reset(:),p(:),q(:)
 
-  complex*16, allocatable :: V(:,:), Vd(:), Vp(:,:), Vpd(:,:), vl(:,:) 
-  complex*16, allocatable :: densmat(:,:),  delR(:,:),nacl(:)
-  complex*16, allocatable :: delP(:,:), c_matrix(:,:), nacv(:,:)
+  complex*16, allocatable :: V(:,:), Vd(:), Vp(:,:,:), Vpd(:,:,:), vl(:,:)
+  complex*16, allocatable :: densmat(:,:),  delR(:,:,:),nacl(:)
+  complex*16, allocatable :: delP(:,:,:), c_matrix(:,:), nacv(:,:,:)
   complex*16, allocatable :: b_matrix(:,:), b_matrix_temp(:,:), c_matrix_temp(:,:)
   
   integer active,it,is,irun,nruns,activeold,nstates,ndim,sh_seed, counter
@@ -16,26 +16,26 @@ program frog_batch
   logical terminate, testmode, lexci
 
   testmode = .false.
-  p_initial = 7.0
-  p_final = 10.0
+  p_initial = 1.0
+  p_final = 1.1
   p_step = 0.5
   tmax = 10000
-  timstp = 1.0
-  nruns = 100
-  mass = 2000.0
+  timstp = 10
+  nruns = 1
+  mass = 1836.0
 
-  nstates = 2
-  ndim = 1
+  nstates = 5
+  ndim = 5
 
   terminate = .false. 
 
 
   allocate(V(nstates,nstates))
   allocate(vl(nstates,nstates))
-  allocate(Vp(nstates,nstates))
+  allocate(Vp(nstates,nstates,ndim))
   allocate(Vd(nstates))
-  allocate(Vpd(nstates,nstates))
-  allocate(nacv(nstates,nstates))
+  allocate(Vpd(nstates,nstates,ndim))
+  allocate(nacv(nstates,nstates,ndim))
   allocate(nacl((nstates*(nstates+1))/2))
   allocate(p(ndim))
   allocate(q(ndim))
@@ -43,43 +43,25 @@ program frog_batch
   allocate(values(8))
 
   allocate(densmat(nstates,nstates))
-  allocate(delR(nstates,nstates))
-  allocate(delP(nstates,nstates))
+  allocate(delR(nstates,nstates,ndim))
+  allocate(delP(nstates,nstates,ndim))
   
   allocate(proba(nstates,nstates),gamma_collapse(nstates))
   allocate(gamma_reset(nstates))
  
   allocate(stat(4))
-
+  q=0
   testmode = .false.
   if(testmode) then
+
+  q(1) = -2.0
+  q(2) = 3.0
+  call electronic_evaluate(mass,p,q,V,Vp,Vd,Vpd,nacv,ndim,nstates,active,vl)
+
       scr = -1.0
 
-      write(*,'(a)') "#q, real(Vd(1)), real(Vd(2)), real(nacv(1,2))"
-      do onedq = -10.0,10.0,0.2
-         q(1) = onedq
-
-          call electronic_evaluate(p,q,V,Vp,Vd,Vpd,nacv,ndim,nstates,active,vl)
-          
-          write(*,'(7e18.10)') q, real(Vd(1)), real(Vd(2)), real(Vp(1,1)), real(Vp(1,2)), real(Vpd(1,1)), real(nacv(1,2))
-!          write(*,*) ' V '
-!          write(*,'(2e18.10)') V
-!          write(*,*) ' Vd '
-!          write(*,'(2e18.10)') Vd
-!          write(*,*) 'Vp'
-!          write(*,'(2e18.10)') Vp
-!          write(*,*) 'Vpd'
-!          write(*,'(2e18.10)') Vpd
-!          write(*,*) 'Vl'
-!          write(*,'(2e18.10)') Vl
-!          write(*,*) ' '
-!          write(*,*) ' '
-!          write(*,*) ' '
-    
-     end do
-     
   end if
-  write(*,'(a)')  '#p,     trans_up,       refl_up,    trans_low,     refl_low'
+  !write(*,'(a)')  '#p,     trans_up,       refl_up,    trans_low,     refl_low'
 
   do while(p_initial < p_final) !initial momentum loop
       stat = 0
@@ -99,14 +81,14 @@ program frog_batch
           lexci = .false.
           do while((time<tmax).and.(.not.terminate)) 
               if(active.eq.2) lexci = .true.
-              call electronic_evaluate(p,q,V,Vp,Vd,Vpd,nacv,ndim,nstates,active,vl)
+              call electronic_evaluate(mass,p,q,V,Vp,Vd,Vpd,nacv,ndim,nstates,active,vl)
 
               call classical_propagate(p,q,mass,Vpd,active,&
               &    activeold,nacv,kepara,timstp,Vd,nstates,ndim,nacl)
 
               call electronic_propagate(densmat,Vd,nacl,(timstp/2.0),nstates)
               
-
+!              write(*,'(5e18.10)') (real(densmat(it,it)), it = 1,5)
 !              call aush_propagate(densmat,nstates,delR,delP,Vpd, &
 !              &    gamma_collapse,gamma_reset,mass,nacl,Vd,timstp,active)
               counter = 0
@@ -130,7 +112,6 @@ program frog_batch
               end do
 !              write(*,'(5e18.10)')  time, q(1), p(1),proba(1,2) , proba(2,1)
 !              write(*,'(a)') 'proba'
-!              write(*,'(2e18.10)') proba
 !              if(real(densmat(2,2))>0.00001) write(*,*) 'hello'
 
               call electronic_propagate(densmat,Vd,nacl,(timstp/2.0),nstates)
@@ -144,9 +125,9 @@ program frog_batch
 !                       & delP,nstates,active)
 !              end if
               time = time + timstp
-              if ((abs(q(1))) > 11.0) then
-                  terminate = .true.
-              end if
+!              if ((abs(q(1))) > 11.0) then
+!                  terminate = .true.
+!              end if
           end do! time
           if ((q(1).gt.10.0).and.(active.eq.2)) stat(1) = stat(1) + 1
           if ((q(1).lt.-10.0).and.(active.eq.2)) stat(2) = stat(2) + 1
@@ -211,8 +192,8 @@ subroutine initialize(p,q,densmat,active,ndim,p_initial,nstates)
   complex*16, intent(inout) :: densmat(nstates,nstates)
 
   active = 1
-  p(1) = p_initial
-  q(1) = -10.0
+  p = p_initial
+  q = -2.0
   densmat = 0d0
   densmat(active,active) = (1d0,0d0)
 

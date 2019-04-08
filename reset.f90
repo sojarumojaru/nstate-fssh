@@ -31,16 +31,16 @@ PROGRAM trajau
   open(90, FILE='statistics.k10')
   open(8, File = 'gamma_c_1h0_nodeco')
   open(4, File = 'rnd_1')
-  open(88, File = 'collapse_')
-  open(65, File = 'Force')
-  open(69, File = 'print_dRdP')
-  timestep=1.0
+  open(88, File = 'densmat')
+  open(65, File = 'probal')
+  open(69, File = 'print_pq')
+  timestep=0.2
   idex=1
-  poriginal =10.0
+  poriginal =20.0
   
   maxrun = 1
   write(90,*) 'poriginal, counter, lowtrans, uptrans, lowref, upref, coll, reset'
-  do while(poriginal.le.10.0)
+  do while(poriginal.le.20.0)
 
       write(*,*) 'poriginal', poriginal
       counter = 0
@@ -96,6 +96,7 @@ PROGRAM trajau
 
           do while (abs(q)<10.01) !This is the trajectory loop
               if (t.ge.5000000) exit
+              write(69,*) t,p,q
               loopcount=loopcount+1
               call propagate(p, q, coef, a, timestep, state, m)
               call Potential(q,V)!The diabatic potential matrix is evaluated
@@ -161,7 +162,9 @@ PROGRAM trajau
                   random=ran2(sh_seed)    
                end do
 !              call random_seed(put=seedy) 
-!              call random_number(random)
+              call random_number(random)
+
+              write(88,'(4e18.10)') q, real(a(1,1)), real(a(2,2)), abs(a(1,2))
               if(state.eq.1) then
                   probability = timestep*b21/abs(a(1,1))
                   if(probability>random) then
@@ -174,7 +177,7 @@ PROGRAM trajau
                      flag=1
                  end if
              end if
- 
+             write(65,*) q,probability
              if(flag==1) then 
                  if(l(3-state)-l(state)<0.5*((p**2)/m)) then
                      p = sign(sqrt(p**2 +2*m*(l(state)-l(3-state))),p)
@@ -596,12 +599,12 @@ subroutine getADot(adot, a ,V, rdot, d)
 end subroutine getAdot
 
 
-
+!!Find pot
 Subroutine Potentialp(x, Vp)
 implicit none
     Real*8, intent(IN):: x
     Real*8, dimension(2,2), intent(INOUT):: Vp
-    call Potentialpc(x, Vp)
+    call Potentialpa(x, Vp)
 END subroutine Potentialp 
 
 Subroutine Potentialpa(x, Vp)
@@ -663,13 +666,13 @@ Subroutine Potentialpc(x, V)
     V(2,2) = -V(1,1)
 
 END subroutine Potentialpc 
-
+!!Find pot
 Subroutine Potential(x, V)
 !    IMPLICIT none
     implicit none
     Real*8, intent(IN):: x
     Real*8, dimension(2,2), intent(INOUT):: V
-    call Potentialc(x,V)
+    call Potentiala(x,V)
 END subroutine Potential 
 
 Subroutine Potentiala(x, V)
