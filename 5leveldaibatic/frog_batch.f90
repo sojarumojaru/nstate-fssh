@@ -21,7 +21,7 @@ program frog_batch
   p_step = 0.5
   tmax = 10000
   timstp = 10
-  nruns = 1
+  nruns = 100
   mass = 1836.0
 
   nstates = 5
@@ -193,7 +193,8 @@ subroutine initialize(p,q,densmat,active,ndim,p_initial,nstates)
 
   active = 1
   p = p_initial
-  q = -2.0
+  q = 0 
+  q(1) = -2.0
   densmat = 0d0
   densmat(active,active) = (1d0,0d0)
 

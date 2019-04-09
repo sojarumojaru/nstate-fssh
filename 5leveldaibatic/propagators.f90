@@ -34,7 +34,8 @@ subroutine  electronic_evaluate(mass,p,q,V,Vp,Vd,Vpd,nacv,ndim,&
   call HolsteinGrad(q,Vp,mass,omega)
   Vcopy = V
   Vpcopy = Vp
- 
+  Vpd = 0d0
+  eigen = 0
   call zheev('V','U',nstates , Vcopy, nstates, eigen, work,lwork,rwork,info)
 
   alpha = 1d0
@@ -132,7 +133,8 @@ subroutine classical_propagate(p,q,mass,force,active,activeold,nacv,kepara,&
       pote = real(Vd(active))
       totale = kepara + pote
   end if 
-
+!  write(*,*) 'nacv'
+!  write(*,*) nacv
   if(active.ne.activeold) then
       do idime = 1,ndim
           vel(idime) = p(idime)/mass
