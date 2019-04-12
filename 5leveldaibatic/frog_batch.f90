@@ -16,11 +16,11 @@ program frog_batch
   logical terminate, testmode, lexci
 
   testmode = .false.
-  p_initial = 2.0
-  p_final = 2.1
+  p_initial = 0.0
+  p_final = 0.1
   p_step = 0.5
   tmax = 1000
-  timstp = 0.1
+  timstp = 1.0
   nruns = 1
   mass = 1836.0
 
@@ -55,8 +55,8 @@ program frog_batch
   testmode = .false.
   if(testmode) then
 
-  q(1) = -2.0
-  q(2) = 3.0
+  q(1) = -0.2
+  q(2) = 0.3
   call electronic_evaluate(mass,p,q,V,Vp,Vd,Vpd,nacv,ndim,nstates,active,vl,.false.)
 
       scr = -1.0
@@ -90,8 +90,8 @@ program frog_batch
               call electronic_propagate(densmat,Vd,nacl,(timstp/2.0),nstates,.false.)
               
 !              write(*,'(5e18.10)') (real(densmat(it,it)), it = 1,5)
-!              call aush_propagate(densmat,nstates,delR,delP,Vpd, &
-!              &    gamma_collapse,gamma_reset,mass,nacl,Vd,timstp,active)
+              call aush_propagate(densmat,nstates,ndim,delR,delP,Vpd, &
+              &    gamma_collapse,gamma_reset,mass,nacl,Vd,timstp,active)
               counter = 0
               do is = 1,nstates
                   do it = is,nstates
@@ -119,12 +119,12 @@ program frog_batch
               xranf = ran2(sh_seed)
  
               call select_newstate(active,xranf,proba,nstates)
-!              if (active.ne.activeold)  then 
-!                  call au_hop(delR,delP,nstates,active)
-!              else
-!                  call au_collapse(gamma_reset,gamma_collapse,densmat,delR,&
-!                       & delP,nstates,active)
-!              end if
+              if (active.ne.activeold)  then 
+                  call au_hop(delR,delP,nstates,ndim,active)
+              else
+                  call au_collapse(gamma_reset,gamma_collapse,densmat,delR,&
+                       & delP,nstates,active)
+              end if
               time = time + timstp
 !              if ((abs(q(1))) > 11.0) then
 !                  terminate = .true.
@@ -195,7 +195,7 @@ subroutine initialize(p,q,densmat,active,ndim,p_initial,nstates)
   active = 1
   p = p_initial
   q = 0 
-  q = -0.2
+  q = -0.00
   densmat = 0d0
   densmat(active,active) = (1d0,0d0)
 

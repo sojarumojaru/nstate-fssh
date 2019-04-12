@@ -310,12 +310,6 @@ end subroutine electronic_propagate
 
 
 
-
-
-
-
-
-
 subroutine aush_propagate(densmat,nstates,ndim,delR,delP,Vpd,gamma_collapse,&
            & gamma_reset,mass,nacl,exci,timstp,ifstatenow)
 
@@ -324,10 +318,10 @@ subroutine aush_propagate(densmat,nstates,ndim,delR,delP,Vpd,gamma_collapse,&
   integer, intent(in) :: nstates,ndim
   
 
-  complex*16, intent(inout) :: delR(nstates,nstates)
-  complex*16, intent(inout) :: delP(nstates,nstates)
+  complex*16, intent(inout) :: delR(nstates,nstates,ndim)
+  complex*16, intent(inout) :: delP(nstates,nstates,ndim)
   complex*16, intent(inout) :: densmat(nstates,nstates)
-  complex*16, intent(inout) :: Vpd(nstates,nstates)
+  complex*16, intent(inout) :: Vpd(nstates,nstates,ndim)
   complex*16, intent(in) :: nacl((nstates*(nstates+1))/2)
   complex*16, intent(in)    :: exci(nstates)
   real*8,intent(inout) :: gamma_collapse(nstates)
@@ -337,15 +331,15 @@ subroutine aush_propagate(densmat,nstates,ndim,delR,delP,Vpd,gamma_collapse,&
   
 
 
-  integer rkn
+  integer rkn,it,is
   integer ierr, i, rkcycle, idime, resolution,resolution_au
   real*8 minitimstp, time, dtmax
   real*8 rksum
   real*8, allocatable :: rkcoefs(:)
   real*8, allocatable :: taudinv(:,:),taurinv(:,:)
-  complex*16, allocatable :: delRdot(:,:,:), delRinput(:,:), delRoutput(:,:)
-  complex*16, allocatable :: delPdot(:,:,:), delPinput(:,:), delPoutput(:,:)
-  complex*16, allocatable :: force(:,:)
+  complex*16, allocatable :: delRdot(:,:,:,:), delRinput(:,:,:), delRoutput(:,:,:)
+  complex*16, allocatable :: delPdot(:,:,:,:), delPinput(:,:,:), delPoutput(:,:,:)
+  complex*16, allocatable :: force(:,:,:)
   complex*16 delRPnorm, zdotc
   
 
@@ -360,23 +354,29 @@ subroutine aush_propagate(densmat,nstates,ndim,delR,delP,Vpd,gamma_collapse,&
 
   dtmax = 0.01/real(exci(nstates-1))
 
-  allocate(delRdot(nstates,nstates,rkn), stat=ierr)
-  allocate(delPdot(nstates,nstates,rkn), stat=ierr)
-  allocate(delRinput(nstates,nstates), stat=ierr)
-  allocate(delPinput(nstates,nstates), stat=ierr)
-  allocate(delRoutput(nstates,nstates), stat=ierr)
-  allocate(delPoutput(nstates,nstates), stat=ierr)
-  allocate(force(nstates,nstates), stat=ierr)
+  allocate(delRdot(nstates,nstates,ndim,rkn), stat=ierr)
+  allocate(delPdot(nstates,nstates,ndim,rkn), stat=ierr)
+  allocate(delRinput(nstates,nstates,ndim), stat=ierr)
+  allocate(delPinput(nstates,nstates,ndim), stat=ierr)
+  allocate(delRoutput(nstates,nstates,ndim), stat=ierr)
+  allocate(delPoutput(nstates,nstates,ndim), stat=ierr)
+  allocate(force(nstates,nstates,ndim), stat=ierr)
   allocate(taudinv(nstates,nstates), stat=ierr)
   allocate(taurinv(nstates,nstates), stat=ierr)
 
 
   force = -Vpd  
-  delRdot = 0.0
-  delPdot = 0.0
-  time  = 0.0
-  gamma_reset = 0.0
-  gamma_collapse = 0.0
+  do it = 1,nstates
+      do is = 1,ndim
+          force(it,it,is) = force(it,it,is) + Vpd(ifstatenow,ifstatenow,is)
+      end do
+  end do
+
+  delRdot = 0d0
+  delPdot = 0d0
+  time  = 0d0
+  gamma_reset = 0d0
+  gamma_collapse = 0d0
   resolution = max(int(timstp/dtmax)+1,resolution_au)
   minitimstp = timstp/(dble(resolution))
 
@@ -385,24 +385,24 @@ subroutine aush_propagate(densmat,nstates,ndim,delR,delP,Vpd,gamma_collapse,&
           delRinput = delR
           delPinput = delP
           if (i > 1) then 
-              delRinput = delRinput + delRdot(:,:,(i-1))*minitimstp/rkcoefs(i)
-              delPinput = delPinput + delPdot(:,:,(i-1))*minitimstp/rkcoefs(i)
+              delRinput = delRinput + delRdot(:,:,:,(i-1))*minitimstp/rkcoefs(i)
+              delPinput = delPinput + delPdot(:,:,:,(i-1))*minitimstp/rkcoefs(i)
           end if
           delRoutput = 0
           delPoutput = 0
           
-          call delRdelPdot(nstates,exci,mass,nacl, &
+          call delRdelPdot(nstates,ndim,exci,mass,nacl, &
                           & force,ifstatenow, densmat,&
                           & delRinput,delPinput,&
                           & delRoutput,delPoutput)
-          delRdot(:,:,i) = delRoutput
-          delPdot(:,:,i) = delPoutput
+          delRdot(:,:,:,i) = delRoutput
+          delPdot(:,:,:,i) = delPoutput
       end do
       do i = 1, rkn
-          delR = delR + minitimstp*rkcoefs(i)*delRdot(:,:,i)/rksum    
-          delP = delP + minitimstp*rkcoefs(i)*delPdot(:,:,i)/rksum    
+          delR = delR + minitimstp*rkcoefs(i)*delRdot(:,:,:,i)/rksum    
+          delP = delP + minitimstp*rkcoefs(i)*delPdot(:,:,:,i)/rksum    
       end do
-      call probcollapse(delR,delP,force,nstates,ifstatenow,taudinv,taurinv)
+      call probcollapse(delR,delP,force,nstates,ndim,ifstatenow,taudinv,taurinv)
       do i = 1,nstates
           gamma_collapse(i) = gamma_collapse(i) + minitimstp*taudinv(i,ifstatenow)
           gamma_reset(i) = gamma_reset(i) + minitimstp*taurinv(i,ifstatenow)
@@ -412,7 +412,7 @@ subroutine aush_propagate(densmat,nstates,ndim,delR,delP,Vpd,gamma_collapse,&
 end subroutine aush_propagate
 
           
-subroutine delRdelPdot(nstates,exci,mass,nacl, &
+subroutine delRdelPdot(nstates,ndim,exci,mass,nacl, &
                           & force,fstatenow, densmat,&
                           & delRinput,delPinput,&
                           & delRdot,delPdot)
@@ -421,17 +421,18 @@ subroutine delRdelPdot(nstates,exci,mass,nacl, &
   implicit none
   
   ! Input parameters
-  integer, intent(in)         :: nstates                                  !< number of electronic states
+  integer, intent(in)         :: nstates                            !< number of electronic states
+  integer, intent(in)         :: ndim                               !< number of classical degrees of freedom
   integer, intent(in)         :: fstatenow                                !< current active state (convention, lowest  = 1)
-  complex*8, intent(in)      :: exci(nstates)                        !< the excitation energies, careful with convention
-  real*8, intent(in)       :: mass                                 !< the excitation energies, careful with convention
-  real*8, intent(in)       :: nacl(((nstates)*(nstates+1))/2)          !< the coupling vectors
+  complex*16, intent(in)      :: exci(nstates)                        !< the excitation energies, careful with convention
+  real*8, intent(in)          :: mass                                 !< the excitation energies, careful with convention
+  complex*16, intent(in)          :: nacl(((nstates)*(nstates+1))/2)          !< the coupling vectors
   complex*16, intent(in)    :: densmat(nstates,nstates)                !< electronic RDM
-  complex*16, intent(in)    :: delRinput(nstates,nstates)      !< The distance between frozen gaussian on a state and the classical position
-  complex*16, intent(in)    :: delPinput(nstates,nstates)      !< The distance between frozen gaussian on a state and the classical momentum 
-  complex*16, intent(inout) :: delRdot(nstates,nstates)        !< time derivative of delR
-  complex*16, intent(inout) :: delPdot(nstates,nstates)        !< time derivative of delP
-  complex*16, intent(in)    :: force(nstates,nstates)        !< time derivative of delP
+  complex*16, intent(in)    :: delRinput(nstates,nstates,ndim)      !< The distance between frozen gaussian on a state and the classical position
+  complex*16, intent(in)    :: delPinput(nstates,nstates,ndim)      !< The distance between frozen gaussian on a state and the classical momentum 
+  complex*16, intent(inout) :: delRdot(nstates,nstates,ndim)        !< time derivative of delR
+  complex*16, intent(inout) :: delPdot(nstates,nstates,ndim)        !< time derivative of delP
+  complex*16, intent(in)    :: force(nstates,nstates,ndim)        !< time derivative of delP
 
   !> To use this subroutine:  It requires the current delR and delP as dynamic inputs
   !! and the Hamiltonian in forms of nowpe, excitation energy and derivative coupling
@@ -439,7 +440,7 @@ subroutine delRdelPdot(nstates,exci,mass,nacl, &
 
   !Local variables
 
-  integer ierr, counter, i, j
+  integer ierr, counter, i, j, idimension
   real*8, allocatable :: nacmat(:,:)
   complex*16 alpha, beta
   complex*16, allocatable :: comoperator(:,:)  
@@ -462,74 +463,96 @@ subroutine delRdelPdot(nstates,exci,mass,nacl, &
   !  delRdot = [H,delR] + i[nacmat,delR] + delP/M
   alpha = 1d0
   beta = 0d0
-  call zgemm('N','N',nstates,nstates,nstates,alpha, &
-       comoperator,nstates,delRinput(1,1),nstates, &
-       beta,delRdot(1,1),nstates)
-  alpha = -1d0
-  beta = 1d0
-  call zgemm('N','N',nstates,nstates,nstates,alpha, &
-      delRinput(1,1),nstates,comoperator,nstates, &
-      beta,delRdot(1,1),nstates)
-  
-  delRdot(:,:) = delRdot(:,:) + &
-           delPinput(:,:)/mass
- 
+  do idimension = 1,ndim
+      call zgemm('N','N',nstates,nstates,nstates,alpha, &
+           comoperator,nstates,delRinput(1,1,idimension),nstates, &
+           beta,delRdot(1,1,idimension),nstates)
+      alpha = -1d0
+      beta = 1d0
+      call zgemm('N','N',nstates,nstates,nstates,alpha, &
+          delRinput(1,1,idimension),nstates,comoperator,nstates, &
+          beta,delRdot(1,1,idimension),nstates)
+      
+      delRdot(:,:,idimension) = delRdot(:,:,idimension) + &
+           delPinput(:,:,idimension)/mass
+  end do
   !  delPdot = [H,delP] + i[nacmat,delP] + {rho,delF}
-  alpha = 1d0
-  beta = 0d0
-  call zgemm('N','N',nstates,nstates,nstates,alpha, &
-       comoperator,nstates,delPinput(1,1),nstates, &
-       beta,delPdot(1,1),nstates)
-  alpha = -1d0
-  beta = 1d0
-  call zgemm('N','N',nstates,nstates,nstates,alpha, &
-       delPinput(1,1),nstates,comoperator,nstates,&
-       beta,delPdot(1,1),nstates)
-  
-  alpha = 0.5d0
-  beta = 1d0 
-  call zgemm('T','T',nstates,nstates,nstates,alpha, &
-       densmat(1,1),nstates,force(1,1),nstates, &
-       beta,delPdot(1,1),nstates)
-  
-  call zgemm('T','T',nstates,nstates,nstates,alpha, &
-            force(1,1),nstates,densmat(1,1),nstates, &
-            beta,delPdot(1,1),nstates)
-    
+  do idimension = 1,ndim
+      alpha = 1d0
+      beta = 0d0
+      call zgemm('N','N',nstates,nstates,nstates,alpha, &
+           comoperator,nstates,delPinput(1,1,idimension),nstates, &
+           beta,delPdot(1,1,idimension),nstates)
+      alpha = -1d0
+      beta = 1d0
+      call zgemm('N','N',nstates,nstates,nstates,alpha, &
+           delPinput(1,1,idimension),nstates,comoperator,nstates,&
+           beta,delPdot(1,1,idimension),nstates)
+      
+      alpha = 0.5d0
+      beta = 1d0 
+      call zgemm('T','T',nstates,nstates,nstates,alpha, &
+           densmat(1,1),nstates,force(1,1,idimension),nstates, &
+           beta,delPdot(1,1,idimension),nstates)
+      
+      call zgemm('T','T',nstates,nstates,nstates,alpha, &
+                force(1,1,idimension),nstates,densmat(1,1),nstates, &
+                beta,delPdot(1,1,idimension),nstates)
+  end do
+        
 end subroutine delRdelPdot
 
 
-subroutine probcollapse(delR,delP,force,nstates,ifstatenow,taudinv,taurinv)
+subroutine probcollapse(delR,delP,force,nstates,ndim,ifstatenow,taudinv,taurinv)
   implicit none
 
 
   ! Input parameters
   integer, intent(in)       :: nstates                                  !< number of electronic states
-  integer, intent(in)       :: ifstatenow                                !< current active state (convention, lowest  = 1)
-  complex*16, intent(in)    :: delR(nstates,nstates)           !< The distance between frozen gaussian on a state and the classical position
-  complex*16, intent(in)    :: delP(nstates,nstates)           !< The distance between frozen gaussian on a state and the classical momentum
-  complex*16, intent(in)    :: force(nstates,nstates)          !< force difference between the active state and the
-                                                                          !!other states
-  real*8, intent(inout)    :: taudinv(nstates,nstates)                 !< The collapse variables to be integrated over dt
-  real*8, intent(inout)    :: taurinv(nstates,nstates)                 !< The reset variables to be integrated over dt
+  integer, intent(in)       :: ndim                                     !< number of classical degrees of freedom
+  integer, intent(in)       :: ifstatenow                               !< current active state (convention, lowest  = 1)
+  complex*16, intent(in)    :: delR(nstates,nstates,ndim)               !< The distance between frozen gaussian on a state and the classical position
+  complex*16, intent(in)    :: delP(nstates,nstates,ndim)               !< The distance between frozen gaussian on a state and the classical momentum
+  complex*16, intent(in)    :: force(nstates,nstates,ndim)              !< force difference between the active state and the
+                                                                           !!other states
+  real*8, intent(inout)    :: taudinv(nstates,nstates)                  !< The collapse variables to be integrated over dt
+  real*8, intent(inout)    :: taurinv(nstates,nstates)                  !< The reset variables to be integrated over dt
   
   !Local Variable
-  integer ii 
+  integer ii,idimension 
   real*8 temp1, temp2, temp3
   
-  taudinv = 0.0
-  taurinv = 0.0
+  taudinv = 0d0
+  taurinv = 0d0
   do ii = 1,nstates
-      temp1 =0.5*Real(force(ii,ii)&
-            &*(delR(ii,ii) - delR(ifstatenow,ifstatenow)))
-      temp2 = Real((delR(ii,ii) - delR(ifstatenow,ifstatenow))*(delP(ii,ii) - delP(ifstatenow,ifstatenow)))
+      do idimension = 1,ndim
+          temp1 =0.5*Real(force(ii,ii,idimension)&
+                        &*(delR(ii,ii,idimension) - delR(ifstatenow,ifstatenow,idimension)))
 
-      temp3 = 2.0*real(force(ii,ifstatenow)*(delR(ii,ii) - delR(ifstatenow,ifstatenow)))
-      taurinv(ii,ifstatenow) = taurinv(ii,ifstatenow)-temp2
 
-      taudinv(ii,ifstatenow) = taudinv(ii,ifstatenow) + temp2 - temp3
+          temp2 = abs(force(ii,ifstatenow,idimension)*(delR(ii,ii,idimension) - delR(ifstatenow,ifstatenow,idimension)))
 
+
+          temp3 = Real((delR(ii,ii,idimension) - delR(ifstatenow,ifstatenow,idimension))*&
+          &       (delP(ii,ii,idimension) - delP(ifstatenow,ifstatenow,idimension)))
+
+          taudinv(ii,ifstatenow) = taudinv(ii,ifstatenow)+temp1 - 2.0 * temp2
+          taurinv(ii,ifstatenow) = taurinv(ii,ifstatenow)-temp1
+
+      end do
   end do
+
+!  do ii = 1,nstates
+!      temp1 =0.5*Real(force(ii,ii)&
+!            &*(delR(ii,ii) - delR(ifstatenow,ifstatenow)))
+!      temp2 = Real((delR(ii,ii) - delR(ifstatenow,ifstatenow))*(delP(ii,ii) - delP(ifstatenow,ifstatenow)))
+!
+!      temp3 = 2.0*real(force(ii,ifstatenow)*(delR(ii,ii) - delR(ifstatenow,ifstatenow)))
+!      taurinv(ii,ifstatenow) = taurinv(ii,ifstatenow)-temp2
+!
+!      taudinv(ii,ifstatenow) = taudinv(ii,ifstatenow) + temp2 - temp3
+!
+!  end do
 
 end subroutine probcollapse
 
@@ -611,31 +634,32 @@ subroutine au_collapse(gamma_reset,gamma_collapse,densmat,delR,delP,nstates,ifst
   end if
 end subroutine au_collapse
 
-subroutine au_hop(nstates,delR,delP,ifstate)
+subroutine au_hop(delR,delP,nstates,ndim,ifstate)
 
   implicit none
 
   integer, intent(in) :: nstates                                  !< number of electronic states in RDM
+  integer, intent(in) :: ndim                                     !< number of classical degrees of freedom
   integer, intent(in) :: ifstate                                   !< current active state. 
-  complex*16, intent(inout) :: delR(nstates,nstates)     !< The distance between frozen gaussian on a state and the classical position
-  complex*16, intent(inout) :: delP(nstates,nstates)     !< The distance between frozen gaussian on a state and the classical momentum
+  complex*16, intent(inout) :: delR(nstates,nstates,ndim)     !< The distance between frozen gaussian on a state and the classical position
+  complex*16, intent(inout) :: delP(nstates,nstates,ndim)     !< The distance between frozen gaussian on a state and the classical momentum
   !********************************************************************!
   !> This subroutine is to be called only when there is a hop in FSSH
 
   !Local variables
   
-  integer i
+  integer ii,ij
   
-  do i = 1,nstates
-      if(i.eq.ifstate) cycle
-      
-      delP(i,i) = delP(i,i) - delP(ifstate,ifstate)
-      delR(i,i) = delR(i,i) - delR(ifstate,ifstate)
-  
+  do ii = 1,nstates
+      if(ii.eq.ifstate) cycle
+      do ij = 1,ndim
+          delP(ii,ii,ij) = delP(ii,ii,ij) - delP(ifstate,ifstate,ij)
+          delR(ii,ii,ij) = delR(ii,ii,ij) - delR(ifstate,ifstate,ij)
+      end do
   end do
   
-  delP(ifstate,ifstate) = 0.0
-  delR(ifstate,ifstate) = 0.0
+  delP(ifstate,ifstate,:) = 0d0
+  delR(ifstate,ifstate,:) = 0d0
 
 end subroutine au_hop
 
