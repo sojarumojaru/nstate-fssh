@@ -16,12 +16,12 @@ program frog_batch
   logical terminate, testmode, lexci
 
   testmode = .false.
-  p_initial = 1.0
-  p_final = 1.1
+  p_initial = 2.0
+  p_final = 2.1
   p_step = 0.5
-  tmax = 10000
-  timstp = 10
-  nruns = 100
+  tmax = 1000
+  timstp = 0.1
+  nruns = 1
   mass = 1836.0
 
   nstates = 5
@@ -51,12 +51,13 @@ program frog_batch
  
   allocate(stat(4))
   q=0
+  p = 1d-3
   testmode = .false.
   if(testmode) then
 
   q(1) = -2.0
   q(2) = 3.0
-  call electronic_evaluate(mass,p,q,V,Vp,Vd,Vpd,nacv,ndim,nstates,active,vl)
+  call electronic_evaluate(mass,p,q,V,Vp,Vd,Vpd,nacv,ndim,nstates,active,vl,.false.)
 
       scr = -1.0
 
@@ -81,12 +82,12 @@ program frog_batch
           lexci = .false.
           do while((time<tmax).and.(.not.terminate)) 
               if(active.eq.2) lexci = .true.
-              call electronic_evaluate(mass,p,q,V,Vp,Vd,Vpd,nacv,ndim,nstates,active,vl)
+              call electronic_evaluate(mass,p,q,V,Vp,Vd,Vpd,nacv,ndim,nstates,active,vl,.false.)
 
               call classical_propagate(p,q,mass,Vpd,active,&
               &    activeold,nacv,kepara,timstp,Vd,nstates,ndim,nacl)
 
-              call electronic_propagate(densmat,Vd,nacl,(timstp/2.0),nstates)
+              call electronic_propagate(densmat,Vd,nacl,(timstp/2.0),nstates,.false.)
               
 !              write(*,'(5e18.10)') (real(densmat(it,it)), it = 1,5)
 !              call aush_propagate(densmat,nstates,delR,delP,Vpd, &
@@ -110,11 +111,11 @@ program frog_batch
                   proba(active,is)=real(densmat(active,is)*b_matrix_temp(is,active))
                   proba(active,is)=(2.0)*timstp*proba(active,is)/real(densmat(active,active))
               end do
-!              write(*,'(5e18.10)')  time, q(1), p(1),proba(1,2) , proba(2,1)
+              write(*,'(5e18.10,i5)')  time, q(1), p(1), densmat(1,1),active
 !              write(*,'(a)') 'proba'
 !              if(real(densmat(2,2))>0.00001) write(*,*) 'hello'
 
-              call electronic_propagate(densmat,Vd,nacl,(timstp/2.0),nstates)
+              call electronic_propagate(densmat,Vd,nacl,(timstp/2.0),nstates,.false.)
               xranf = ran2(sh_seed)
  
               call select_newstate(active,xranf,proba,nstates)
@@ -194,7 +195,7 @@ subroutine initialize(p,q,densmat,active,ndim,p_initial,nstates)
   active = 1
   p = p_initial
   q = 0 
-  q(1) = -2.0
+  q = -0.2
   densmat = 0d0
   densmat(active,active) = (1d0,0d0)
 

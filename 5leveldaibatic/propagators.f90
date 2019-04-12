@@ -1,8 +1,9 @@
 subroutine  electronic_evaluate(mass,p,q,V,Vp,Vd,Vpd,nacv,ndim,&
-                                & nstates,active,vl)
+                                & nstates,active,vl,ldebug)
 
   !! One dimension only
   implicit none
+  logical, intent(in) :: ldebug
   integer, intent(in) :: nstates,active,ndim
   real*8, intent(in) :: mass, p(ndim),q(ndim)
   complex*16, intent(inout) :: V(nstates,nstates), Vd(nstates),Vp(nstates, nstates,ndim)
@@ -10,8 +11,9 @@ subroutine  electronic_evaluate(mass,p,q,V,Vp,Vd,Vpd,nacv,ndim,&
 
   !! Local variables
   
-  complex*16, allocatable :: VR(:,:),c_matrix_temp(:,:)
+  complex*16, allocatable :: VR(:,:),c_matrix_temp(:,:), temp1(:,:)
   complex*16, allocatable :: WORK(:),Vcopy(:,:),vpcopy(:,:,:)
+  complex*16 alphac,betac
   real*8 alpha, beta, thresh,omega,au2rcm
   real*8, allocatable ::  RWORK(:),eigen(:)
   integer i,j,info,lwork,idime,it
@@ -21,6 +23,7 @@ subroutine  electronic_evaluate(mass,p,q,V,Vp,Vd,Vpd,nacv,ndim,&
   allocate(Vcopy(nstates,nstates))
   allocate(Vpcopy(nstates,nstates,ndim))
   allocate(eigen(nstates))
+  allocate(temp1(nstates,nstates))
   allocate(RWORK(3*nstates),WORK(2*nstates),VR(nstates,nstates))
   thresh = 1d-6
   au2rcm=219474.63067d0
@@ -32,26 +35,60 @@ subroutine  electronic_evaluate(mass,p,q,V,Vp,Vd,Vpd,nacv,ndim,&
   omega = 200.0/au2rcm
   call Holstein(q,V,mass,omega)
   call HolsteinGrad(q,Vp,mass,omega)
+
+  if(ldebug) then
+      write(*,'(a)') 'V'
+      write(*,'(10e18.10)') V(:,:)
+      write(*,'(a)') 'Vp'
+      write(*,'(10e18.10)') Vp(:,:,:)
+  end if
   Vcopy = V
   Vpcopy = Vp
   Vpd = 0d0
-  eigen = 0
+  eigen = 0d0
   call zheev('V','U',nstates , Vcopy, nstates, eigen, work,lwork,rwork,info)
 
-  alpha = 1d0
-  beta = 0d0
+  alphac = (1d0,0d0)
+  betac = (0d0,0d0)
 !  call sorteigen(nstates,Vd,Vl,swapped)
+  if(ldebug) then
+      write(*,'(a)') 'eigen vectors'
+      write(*,'(10e18.10)') Vcopy(:,:)
+  
+  end if
+!  do it = 1,ndim
+!      write(*,'(a)') 'Checking lengths and all: Vp'
+!      write(*,'(10e18.10)') Vp(:,:,it)
+!
+!  end do
   do it = 1,ndim
-       call zgemm('N','N',nstates,nstates,nstates,alpha,vcopy,nstates,&
-          & Vp(:,:,it),nstates,beta,c_matrix_temp,nstates)
+       temp1 = Vp(:,:,it)
+       call zgemm('N','N',nstates,nstates,nstates,alphac,vcopy,nstates,&
+          & temp1,nstates,betac,c_matrix_temp,nstates)
+      if(ldebug) then
+          write(*,'(a)') 'c_matrix_temp'
+          write(*,'(10e18.10)') c_matrix_temp(:,:)
+      
+      end if
 
-       call zgemm('N','C',nstates,nstates,nstates,alpha,c_matrix_temp,nstates,&
-          & vcopy,nstates,beta,Vpd(:,:,it),nstates)
+       call zgemm('N','C',nstates,nstates,nstates,alphac,c_matrix_temp,nstates,&
+          & vcopy,nstates,betac,Vpd(:,:,it),nstates)
+      if(ldebug) then
+          write(*,'(a)') 'inside loop Vpd'
+          write(*,'(10e18.10)') Vpd(:,:,:)
+      
+      end if
   end do
+  if(ldebug) then
+      write(*,'(a)') 'Vpd'
+      write(*,'(10e18.10)') Vpd(:,:,:)
+  end if
   Vl = V
   nacv = 0d0
   do i = 1, nstates
       Vd(i) = eigen(i)
+  end do
+  do i = 1, nstates
       do j = 1,nstates
           if(i.eq.j) cycle
           do it = 1,ndim
@@ -179,8 +216,9 @@ subroutine classical_propagate(p,q,mass,force,active,activeold,nacv,kepara,&
 end subroutine classical_propagate
 
 
-subroutine electronic_propagate(densmat,Vd,nacl,timstp,nstates)
+subroutine electronic_propagate(densmat,Vd,nacl,timstp,nstates,ldebug)
   implicit none
+  logical, intent(in) :: ldebug
   integer, intent(in) :: nstates
   real*8, intent(in) :: timstp
   complex*16, intent(in) :: nacl((nstates*(nstates+1)/2))
@@ -192,7 +230,7 @@ subroutine electronic_propagate(densmat,Vd,nacl,timstp,nstates)
   complex*16, allocatable :: b_matrix(:,:)
   complex*16, allocatable :: c_matrix(:,:)
   complex*16, allocatable :: c_matrix_temp(:,:)
-  real*8 alpha, beta
+  complex*16 alpha, beta
   integer it,is,counter
   complex*16, allocatable :: vr(:,:), work(:), vl(:,:), w(:)
   real*8, allocatable ::  rwork(:)
@@ -219,8 +257,8 @@ subroutine electronic_propagate(densmat,Vd,nacl,timstp,nstates)
   
   vl = 0d0
 
-!  write(*,'(a)') 'nacl'
-!  write(*,'(2e18.10)') nacl
+  if(ldebug)  write(*,'(a)') 'nacl'
+  if(ldebug)  write(*,'(2e18.10)') nacl
   do it = 1, nstates
       do is = it, nstates
           counter=counter+1
@@ -237,35 +275,35 @@ subroutine electronic_propagate(densmat,Vd,nacl,timstp,nstates)
 !  write(*,'(2e18.10)') b_matrix
   call zgeev('V','N',nstates,b_matrix,nstates,w,vl,nstates,vr,&
        & nstates,work,(2*(nstates)),rwork,info )
-!  write(*,'(a)') 'info'
-!  write(*,'(i3)') info
-!  write(*,*) 'w'
-!  write(*,'(2e18.10)') w
+  if(ldebug)  write(*,'(a)') 'info'
+  if(ldebug)  write(*,'(i3)') info
+  if(ldebug)  write(*,*) 'w'
+  if(ldebug)  write(*,'(2e18.10)') w
 
   do is=1,nstates
       c_matrix(is,is)=exp(minusi*w(is)*timstp)
   end do
   
-  alpha=1d0
-  beta=0d0
+  alpha=(1d0,0d0)
+  beta=(0d0,0d0)
   ! $\rho(t+\Delta t/2) = e^{iH\Delta t/2}\rho(t)e^{-iH\Delta t/2}
   call zgemm('N','N',nstates,nstates,nstates,alpha,vl,nstates,&
        c_matrix,nstates,beta,c_matrix_temp,nstates)
   call zgemm('N','C',nstates,nstates,nstates,alpha,c_matrix_temp,nstates,&
        vl,nstates,beta,c_matrix,nstates)
 
-!  write(*,*) 'c_matrix after'
-!  write(*,'(2e18.10)') c_matrix
-!  write(*,*) 'densmat before'
-!  write(*,'(2e18.10)') densmat
+  if(ldebug) write(*,*) 'c_matrix after'
+  if(ldebug)  write(*,'(2e18.10)') c_matrix
+  if(ldebug) write(*,*) 'densmat before'
+  if(ldebug)  write(*,'(2e18.10)') densmat
   call zgemm('N','N',nstates,nstates,nstates,alpha,c_matrix,nstates,&
        densmat,nstates,beta,densmatnew,nstates)
 
   call zgemm('N','C',nstates,nstates,nstates,alpha,densmatnew,nstates,&
        c_matrix,nstates,beta,densmat,nstates)
 
-!  write(*,*) 'densmat after'
-!  write(*,'(2e18.10)') densmat
+  if(ldebug) write(*,*) 'densmat after'
+  if(ldebug) write(*,'(2e18.10)') densmat
 
 end subroutine electronic_propagate
 
