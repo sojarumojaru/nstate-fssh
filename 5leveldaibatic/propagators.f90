@@ -1,12 +1,15 @@
-subroutine  electronic_evaluate(mass,p,q,V,Vp,Vd,Vpd,nacv,ndim,&
-                                & nstates,active,vl,ldebug)
+subroutine  electronic_evaluate(mass,omega,p,q,V,Vp,Vd,Vpd,nacv,ndim,&
+                                & nstates,active,vl,eigvec,ldebug)
 
-  !! One dimension only
+  !! Currently evaluating things only for adiabatic basis.
+
+
   implicit none
   logical, intent(in) :: ldebug
   integer, intent(in) :: nstates,active,ndim
-  real*8, intent(in) :: mass, p(ndim),q(ndim)
+  real*8, intent(in) :: mass, omega, p(ndim),q(ndim)
   complex*16, intent(inout) :: V(nstates,nstates), Vd(nstates),Vp(nstates, nstates,ndim)
+  complex*16, intent(inout) :: eigvec(nstates,nstates)
   complex*16, intent(inout) :: nacv(nstates,nstates,ndim), vl(nstates,nstates),Vpd(nstates,nstates,ndim)
 
   !! Local variables
@@ -14,7 +17,7 @@ subroutine  electronic_evaluate(mass,p,q,V,Vp,Vd,Vpd,nacv,ndim,&
   complex*16, allocatable :: VR(:,:),c_matrix_temp(:,:), temp1(:,:)
   complex*16, allocatable :: WORK(:),Vcopy(:,:),vpcopy(:,:,:)
   complex*16 alphac,betac
-  real*8 alpha, beta, thresh,omega,au2rcm
+  real*8 alpha, beta, thresh!, au2rcm,pi,speedoflight,au2aa
   real*8, allocatable ::  RWORK(:),eigen(:)
   integer i,j,info,lwork,idime,it
   logical swapped
@@ -25,14 +28,12 @@ subroutine  electronic_evaluate(mass,p,q,V,Vp,Vd,Vpd,nacv,ndim,&
   allocate(eigen(nstates))
   allocate(temp1(nstates,nstates))
   allocate(RWORK(3*nstates),WORK(2*nstates),VR(nstates,nstates))
-  thresh = 1d-6
-  au2rcm=219474.63067d0
-  lwork = 2*nstates
-!  call potentiala(q,V)
-!  call potentialpa(q,Vp)
 
-  au2rcm=219474.63067d0
-  omega = 200.0/au2rcm
+
+  lwork = 2*nstates
+
+  thresh = 1d-6
+
   call Holstein(q,V,mass,omega)
   call HolsteinGrad(q,Vp,mass,omega)
 
@@ -42,11 +43,11 @@ subroutine  electronic_evaluate(mass,p,q,V,Vp,Vd,Vpd,nacv,ndim,&
       write(*,'(a)') 'Vp'
       write(*,'(10e18.10)') Vp(:,:,:)
   end if
-  Vcopy = V
+  eigvec = V
   Vpcopy = Vp
   Vpd = 0d0
   eigen = 0d0
-  call zheev('V','U',nstates , Vcopy, nstates, eigen, work,lwork,rwork,info)
+  call zheev('V','U',nstates , eigvec, nstates, eigen, work,lwork,rwork,info)
 
   alphac = (1d0,0d0)
   betac = (0d0,0d0)
@@ -56,14 +57,10 @@ subroutine  electronic_evaluate(mass,p,q,V,Vp,Vd,Vpd,nacv,ndim,&
       write(*,'(10e18.10)') Vcopy(:,:)
   
   end if
-!  do it = 1,ndim
-!      write(*,'(a)') 'Checking lengths and all: Vp'
-!      write(*,'(10e18.10)') Vp(:,:,it)
-!
-!  end do
+
   do it = 1,ndim
        temp1 = Vp(:,:,it)
-       call zgemm('N','N',nstates,nstates,nstates,alphac,vcopy,nstates,&
+       call zgemm('C','N',nstates,nstates,nstates,alphac,eigvec,nstates,&
           & temp1,nstates,betac,c_matrix_temp,nstates)
       if(ldebug) then
           write(*,'(a)') 'c_matrix_temp'
@@ -71,8 +68,8 @@ subroutine  electronic_evaluate(mass,p,q,V,Vp,Vd,Vpd,nacv,ndim,&
       
       end if
 
-       call zgemm('N','C',nstates,nstates,nstates,alphac,c_matrix_temp,nstates,&
-          & vcopy,nstates,betac,Vpd(:,:,it),nstates)
+       call zgemm('N','N',nstates,nstates,nstates,alphac,c_matrix_temp,nstates,&
+          & eigvec,nstates,betac,Vpd(:,:,it),nstates)
       if(ldebug) then
           write(*,'(a)') 'inside loop Vpd'
           write(*,'(10e18.10)') Vpd(:,:,:)
@@ -129,25 +126,34 @@ subroutine sorteigen(nstates,Vd,Vl,swapped)
 end subroutine sorteigen
 
 subroutine classical_propagate(p,q,mass,force,active,activeold,nacv,kepara,&
-           & timstp,Vd,nstates,ndim,nacl)
+           & timstp,Vd,nstates,ndim,nacl,kine,pote)
   implicit none
   
   integer, intent(in) :: nstates,ndim
   integer, intent(inout) :: active,activeold
   real*8, intent(inout) :: p(ndim),q(ndim),kepara
+  real*8, intent(inout) :: kine, pote
   real*8, intent(in) :: mass,timstp
   complex*16, intent(in) :: force(nstates,nstates,ndim), nacv(nstates,nstates,ndim)
   complex*16, intent(in) :: Vd(nstates)
   complex*16, intent(inout) :: nacl((nstates*(nstates+1))/2)
 
   !! Local variables
-  real*8, allocatable :: vel(:), acc(:)
-  real*8 exci,sgn,pote,totale
+  real*8, allocatable :: vel(:), acc(:),rescale_vec(:),ppara(:)
+  real*8 exci,sgn,sqvec,a,b,c,vt,tsqm,dnrm2
+  real*8 faktorplusp,faktorplusm,faktor
   integer ii,ij,icounter,idime
   allocate(vel(ndim))
   allocate(acc(ndim))
+  allocate(rescale_vec(ndim))
+  allocate(ppara(ndim))
   icounter = 0
   nacl = 0
+  kine = 0d0
+  pote = 0d0
+
+  pote = real(Vd(active))
+
   if(activeold.eq.active) then
       vel = p/mass
       acc= -real(force(active,active,:))/mass
@@ -163,12 +169,9 @@ subroutine classical_propagate(p,q,mass,force,active,activeold,nacv,kepara,&
       end do
       q = q + vel*timstp
       p = mass*vel
-      kepara = 0
-      do idime = 1,ndim
-          kepara = kepara + 0.5*(vel(idime)-acc(idime)*timstp/2.0)*(vel(idime)-acc(idime)*timstp/2.0)*mass
-      end do
       pote = real(Vd(active))
-      totale = kepara + pote
+      
+
   end if 
 !  write(*,*) 'nacv'
 !  write(*,*) nacv
@@ -188,17 +191,46 @@ subroutine classical_propagate(p,q,mass,force,active,activeold,nacv,kepara,&
           end do
       end do
       kepara = 0
+      rescale_vec = nacv(active,activeold,:)
+      sqvec = dnrm2(ndim,rescale_vec,1)
+      kepara = 0
+
       do idime = 1,ndim
-          kepara = kepara + 0.5*vel(idime)*vel(idime)*mass
+          ppara(idime) = p(idime)*rescale_vec(idime)
       end do
+
+      ppara = ppara/sqvec
+
+      do idime = 1,ndim
+          kepara = kepara+0.5*ppara(idime)**2/mass
+      end do
+
       exci = real(Vd(active)) - real(Vd(activeold))
+
+
+      
+      do idime = 1,ndim
+         vt = vt + mass*vel(idime)*rescale_vec(idime)
+         b = b + vel(idime)*rescale_vec(idime)
+         a = a + 0.5* rescale_vec(idime)*rescale_vec(idime)/mass
+         tsqm = tsqm + rescale_vec(idime)*rescale_vec(idime)/mass
+      end do
       if (exci > 0) sgn = -1.0
       if (exci < 0) sgn = 1.0
       if(kepara.gt.exci) then
+          c = exci
+          faktorplusp = (-b + sqrt(b*b - 4*a*c))/(2*a)
+          faktorplusm = (-b - sqrt(b*b - 4*a*c))/(2*a)
+
+          if (abs(faktorplusp) <= abs(faktorplusm)) then
+              faktor = faktorplusp
+          else
+              faktor = faktorplusm
+          end if
           activeold = active
           do idime = 1,ndim
               acc(idime) = -real(force(activeold,activeold,idime))/mass
-              vel(idime) = vel(idime) + acc(idime)*timstp*0.5 + sgn*sqrt(2.0*abs(exci)/mass)
+              vel(idime) = vel(idime) + acc(idime)*timstp*0.5 + faktor*rescale_vec(idime)/mass
           end do
           
       else
@@ -211,6 +243,10 @@ subroutine classical_propagate(p,q,mass,force,active,activeold,nacv,kepara,&
       q = q + vel*timstp
       p = mass*vel
   end if
+  pote = real(Vd(active))
+  do idime = 1,ndim
+     kine = kine + 0.5d0*mass*vel(idime)**2 
+  end do
 !  write(*,'(a)') '#p(1),q(1), kepara,pote,totale,active'
 !  write(*,'(5e15.6,i3)') p(1),q(1), kepara,pote,totale,active
 end subroutine classical_propagate

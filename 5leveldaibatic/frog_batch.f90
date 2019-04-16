@@ -11,16 +11,17 @@ program frog_batch
   
   integer active,it,is,irun,nruns,activeold,nstates,ndim,sh_seed, counter
   integer, allocatable :: stat(:),values(:)
-  real*8 ran2
+  real*8 au2rcm,pi,speedoflight,au2aa,omega
+  real*8 ran2, kine, pote, totale
   
-  logical terminate, testmode, lexci
+  logical terminate, testmode, lexci, lafssh, ldiabatic
 
   testmode = .false.
-  p_initial = 0.0
-  p_final = 0.1
+  p_initial = 0.3
+  p_final = 0.5
   p_step = 0.5
-  tmax = 1000
-  timstp = 1.0
+  tmax = 40d2
+  timstp = 0.5
   nruns = 1
   mass = 1836.0
 
@@ -28,8 +29,8 @@ program frog_batch
   ndim = 5
 
   terminate = .false. 
-
-
+  lafssh = .false.
+  ldiabatic = .false.
   allocate(V(nstates,nstates))
   allocate(vl(nstates,nstates))
   allocate(Vp(nstates,nstates,ndim))
@@ -50,17 +51,23 @@ program frog_batch
   allocate(gamma_reset(nstates))
  
   allocate(stat(4))
-  q=0
-  p = 1d-3
+
+  au2rcm=219474.63067d0
+  pi = 3.14159265359d0
+  speedoflight = 137.0359990740d0
+
+  au2rcm=219474.63067d0
+  au2aa = .52917721067d0
+  omega = 200.0 !cm-1
+  omega = ( (omega/1d8) *au2aa )*speedoflight*2*pi
+
   testmode = .false.
   if(testmode) then
-
-  q(1) = -0.2
-  q(2) = 0.3
-  call electronic_evaluate(mass,p,q,V,Vp,Vd,Vpd,nacv,ndim,nstates,active,vl,.false.)
-
+      q(1) = -0.2
+      q(2) = 0.3
+      call electronic_evaluate(mass,omega,p,q,V,Vp,Vd,Vpd,nacv,ndim,&
+           & nstates,active,vl,.false.)
       scr = -1.0
-
   end if
   !write(*,'(a)')  '#p,     trans_up,       refl_up,    trans_low,     refl_low'
 
@@ -69,7 +76,8 @@ program frog_batch
       irun = 0 
       do while(irun<nruns) !indivudual trajectory loop
          irun = irun + 1
-          call initialize(p,q,densmat,active,ndim,p_initial,nstates)
+          call initialize(p,q,densmat,active,ndim,p_initial,nstates,mass,omega)
+          call initialize(p,q,densmat,active,ndim,p_initial,nstates,mass,omega)
           terminate = .false.
           active = 1
           activeold = active
@@ -82,16 +90,20 @@ program frog_batch
           lexci = .false.
           do while((time<tmax).and.(.not.terminate)) 
               if(active.eq.2) lexci = .true.
-              call electronic_evaluate(mass,p,q,V,Vp,Vd,Vpd,nacv,ndim,nstates,active,vl,.false.)
+              call electronic_evaluate(mass,omega,p,q,V,Vp,Vd,Vpd,nacv,ndim,&
+              &    nstates,active,vl,.false.)
 
               call classical_propagate(p,q,mass,Vpd,active,&
-              &    activeold,nacv,kepara,timstp,Vd,nstates,ndim,nacl)
+              &activeold,nacv,kepara,timstp,Vd,nstates,ndim,nacl,kine,pote)
+              
 
+              totale = kine+pote
+                  
               call electronic_propagate(densmat,Vd,nacl,(timstp/2.0),nstates,.false.)
               
 !              write(*,'(5e18.10)') (real(densmat(it,it)), it = 1,5)
-              call aush_propagate(densmat,nstates,ndim,delR,delP,Vpd, &
-              &    gamma_collapse,gamma_reset,mass,nacl,Vd,timstp,active)
+              if(lafssh) call aush_propagate(densmat,nstates,ndim,delR,delP,Vpd, &
+                         &    gamma_collapse,gamma_reset,mass,nacl,Vd,timstp,active)
               counter = 0
               do is = 1,nstates
                   do it = is,nstates
@@ -111,6 +123,7 @@ program frog_batch
                   proba(active,is)=real(densmat(active,is)*b_matrix_temp(is,active))
                   proba(active,is)=(2.0)*timstp*proba(active,is)/real(densmat(active,active))
               end do
+!              write(*,'(5e18.10,i5)')  time, q(1), p(1), kine, pote,active
               write(*,'(5e18.10,i5)')  time, q(1), p(1), densmat(1,1),active
 !              write(*,'(a)') 'proba'
 !              if(real(densmat(2,2))>0.00001) write(*,*) 'hello'
@@ -119,11 +132,13 @@ program frog_batch
               xranf = ran2(sh_seed)
  
               call select_newstate(active,xranf,proba,nstates)
-              if (active.ne.activeold)  then 
-                  call au_hop(delR,delP,nstates,ndim,active)
-              else
-                  call au_collapse(gamma_reset,gamma_collapse,densmat,delR,&
-                       & delP,nstates,active)
+              if(lafssh) then 
+                  if (active.ne.activeold)  then 
+                      call au_hop(delR,delP,nstates,ndim,active)
+                  else
+                      call au_collapse(gamma_reset,gamma_collapse,densmat,delR,&
+                           & delP,nstates,active)
+                  end if
               end if
               time = time + timstp
 !              if ((abs(q(1))) > 11.0) then
@@ -135,7 +150,7 @@ program frog_batch
           if ((q(1).gt.10.0).and.(active.eq.1)) stat(3) = stat(3) + 1
           if ((q(1).lt.-10.0).and.(active.eq.1)) stat(4) = stat(4) + 1
       end do ! run
-      write(*,'(e15.6,4i12)') p_initial, stat
+!      write(*,'(e15.6,4i12)') p_initial, stat
       p_initial = p_initial + p_step
   end do! momentum
 
@@ -185,19 +200,43 @@ integer ii, exopt, is,it
  end do
 end subroutine select_newstate
 
-subroutine initialize(p,q,densmat,active,ndim,p_initial,nstates)
+subroutine initialize(p,q,densmat,active,ndim,p_initial,nstates,mass,omega)
   implicit none
 
   integer, intent(inout) :: active,nstates,ndim
-  real*8, intent(inout) :: p(ndim),q(ndim),p_initial
+  real*8, intent(inout) :: p(ndim),q(ndim),p_initial,mass,omega
   complex*16, intent(inout) :: densmat(nstates,nstates)
+  real*8 ran2, u1,u2,sigmap,sigmax,kB,temp,pi,z1,z2
+  integer idimension
+  integer, allocatable :: values(:)
+
+  
+
+  allocate(values(8))
 
   active = 1
-  p = p_initial
-  q = 0 
-  q = -0.00
+
+  pi = 3.14159265359d0
+  temp = 575.5d0 !K
+  kB = 3.166811429d-6
+  sigmax = sqrt(kB*temp/(mass*omega**2))
+  sigmap = sqrt(mass*kB*temp)
+  call date_and_time(values=values)
+
+  do idimension = 1,ndim
+      u1 = ran2(values(8))
+      u2 = ran2(values(8))
+      z1 = sqrt(-2.0 * log(u1)) * cos(2*pi * u2)
+      z2 = sqrt(-2.0 * log(u1)) * sin(2*pi * u2)
+      p(idimension) = z1 * sigmap
+      q(idimension) = z1 * sigmax
+  end do
+
   densmat = 0d0
   densmat(active,active) = (1d0,0d0)
+
+
+
 
 end subroutine initialize
 function ran2(idum)

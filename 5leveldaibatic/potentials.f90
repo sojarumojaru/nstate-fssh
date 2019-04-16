@@ -180,16 +180,18 @@ subroutine Holstein(q,V,mass,omega)
   
   real*8, intent(in) :: q(5), mass, omega
   complex*16, intent(inout) :: V(5,5)
-  real*8 Vc, g, classpe, au2rcm
+  real*8 Vc, g, classpe, au2rcm,au2aa,eta
   integer it
   au2rcm=219474.63067d0
-  V = 0
-  Vc = 50/au2rcm
-  g = 3091.8/au2rcm
+  au2aa = .52917721067d0
+  eta = 0d-4 ! Debug parameter
+  V = 0d0
+  Vc = 50.0d0/au2rcm
+  g = (3091.8/au2rcm)*au2aa
   classpe = 0
   do it = 1,5
       classpe = classpe + 0.5*mass*omega**2*q(it)**2
-      V(it,it) = q(it)*g
+      V(it,it) = q(it)*g + it*eta
       if ((it-1) >0) V(it,it-1) = Vc
       if ((it+1) <6) V(it,it+1) = Vc
   end do
@@ -206,15 +208,19 @@ subroutine HolsteinGrad(q,V,mass,omega)
   
   real*8, intent(in) :: q(5), mass, omega
   complex*16, intent(inout) :: V(5,5,5)
-  real*8 Vc, g, classpe, au2rcm
-  integer it
+  real*8 Vc, g, classpe, au2rcm,au2aa
+  integer it, is
   V = 0
+  au2aa = .52917721067d0
   au2rcm=219474.63067d0
-  Vc = 50/au2rcm
-  g = 3091.8/au2rcm
+  Vc = 50.0d0/au2rcm
+  g = (3091.8/au2rcm)*au2aa
   classpe = 0
   do it = 1,5
-      V(it,it,it) = g + mass*omega**2*q(it)
+      V(it,it,it) = g 
+      do is = 1,5
+          V(is,is,it) = V(is,is,it) + mass*omega**2*q(it)
+      end do
   end do
 
 end subroutine
