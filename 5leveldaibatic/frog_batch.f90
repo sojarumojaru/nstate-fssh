@@ -4,38 +4,47 @@ program frog_batch
   real*8 time,scr,onedq
   real*8, allocatable :: proba(:,:), gamma_collapse(:),gamma_reset(:),p(:),q(:)
 
-  complex*16, allocatable :: V(:,:), Vd(:), Vp(:,:,:), Vpd(:,:,:), vl(:,:)
-  complex*16, allocatable :: densmat(:,:),  delR(:,:,:),nacl(:)
-  complex*16, allocatable :: delP(:,:,:), c_matrix(:,:), nacv(:,:,:)
+  complex*16, allocatable :: V(:,:), Vd(:), Vp(:,:,:), Vpd(:,:,:)
+  complex*16, allocatable :: densmat(:,:),  delR(:,:,:),nacl(:),coef(:),densmatnew(:,:)
+  complex*16, allocatable :: delP(:,:,:),c_matrix(:,:),nacv(:,:,:),eigvec(:,:),densadia(:,:)
   complex*16, allocatable :: b_matrix(:,:), b_matrix_temp(:,:), c_matrix_temp(:,:)
-  
+   
+  complex*16 alpha,beta 
   integer active,it,is,irun,nruns,activeold,nstates,ndim,sh_seed, counter
+  integer timecounter,pitch
   integer, allocatable :: stat(:),values(:)
   real*8 au2rcm,pi,speedoflight,au2aa,omega
   real*8 ran2, kine, pote, totale
   
-  logical terminate, testmode, lexci, lafssh, ldiabatic
+  logical terminate, testmode, lafssh, ldiabatic, ldebug
 
   testmode = .false.
   p_initial = 0.3
   p_final = 0.5
   p_step = 0.5
-  tmax = 40d2
-  timstp = 0.5
-  nruns = 1
+  tmax = 4d4
+  timstp = 5d-1
+  nruns = 10
   mass = 1836.0
 
   nstates = 5
   ndim = 5
-
+  
   terminate = .false. 
-  lafssh = .false.
-  ldiabatic = .false.
+  lafssh = .true.
+  ldebug = .false.
+  ldiabatic = .true.
+
+  alpha=(1d0,0d0)
+  beta=(0d0,0d0)
+  pitch=10
+
   allocate(V(nstates,nstates))
-  allocate(vl(nstates,nstates))
   allocate(Vp(nstates,nstates,ndim))
   allocate(Vd(nstates))
+  allocate(coef(nstates))
   allocate(Vpd(nstates,nstates,ndim))
+  allocate(eigvec(nstates,nstates))
   allocate(nacv(nstates,nstates,ndim))
   allocate(nacl((nstates*(nstates+1))/2))
   allocate(p(ndim))
@@ -66,20 +75,27 @@ program frog_batch
       q(1) = -0.2
       q(2) = 0.3
       call electronic_evaluate(mass,omega,p,q,V,Vp,Vd,Vpd,nacv,ndim,&
-           & nstates,active,vl,.false.)
+           & nstates,active,eigvec,.false.)
       scr = -1.0
   end if
   !write(*,'(a)')  '#p,     trans_up,       refl_up,    trans_low,     refl_low'
+
+  if(ldiabatic) then
+      allocate(densadia(nstates,nstates))
+      allocate(densmatnew(nstates,nstates))
+  end if
 
   do while(p_initial < p_final) !initial momentum loop
       stat = 0
       irun = 0 
       do while(irun<nruns) !indivudual trajectory loop
          irun = irun + 1
+          write(*,*) '# run  ',irun
+          write(*,*) ''
           call initialize(p,q,densmat,active,ndim,p_initial,nstates,mass,omega)
-          call initialize(p,q,densmat,active,ndim,p_initial,nstates,mass,omega)
+          coef = 0d0
+          if(ldiabatic) coef(1) =1d0
           terminate = .false.
-          active = 1
           activeold = active
           time = 0
           call date_and_time(values=values) 
@@ -87,24 +103,34 @@ program frog_batch
           do it = 1,30
               xranf=ran2(sh_seed)    
           end do
-          lexci = .false.
+          timecounter = 0
           do while((time<tmax).and.(.not.terminate)) 
-              if(active.eq.2) lexci = .true.
+              timecounter = timecounter + 1
               call electronic_evaluate(mass,omega,p,q,V,Vp,Vd,Vpd,nacv,ndim,&
-              &    nstates,active,vl,.false.)
+              &    nstates,active,eigvec,.false.)
 
               call classical_propagate(p,q,mass,Vpd,active,&
-              &activeold,nacv,kepara,timstp,Vd,nstates,ndim,nacl,kine,pote)
+              &activeold,nacv,kepara,timstp,Vd,nstates,ndim,nacl,kine,pote,ldebug)
               
 
               totale = kine+pote
-                  
-              call electronic_propagate(densmat,Vd,nacl,(timstp/2.0),nstates,.false.)
-              
+                  call electronic_propagate(densmat,Vd,nacl,(timstp/2.0),nstates,ldebug,ldiabatic,eigvec,V)
+!                  call el_pro_dia(densmat,coef,(timstp/2.0),nstates,ndim,q,eigvec)
 !              write(*,'(5e18.10)') (real(densmat(it,it)), it = 1,5)
               if(lafssh) call aush_propagate(densmat,nstates,ndim,delR,delP,Vpd, &
                          &    gamma_collapse,gamma_reset,mass,nacl,Vd,timstp,active)
               counter = 0
+              if (ldiabatic) then
+                  
+                  call zgemm('N','N',nstates,nstates,nstates,alpha,eigvec,nstates,&
+                       densmat,nstates,beta,densmatnew,nstates)
+             
+                  call zgemm('N','C',nstates,nstates,nstates,alpha,densmatnew,nstates,&
+                       eigvec,nstates,beta,densadia,nstates)
+              end if
+
+
+
               do is = 1,nstates
                   do it = is,nstates
                       counter = counter + 1 
@@ -120,15 +146,24 @@ program frog_batch
               proba = 0
               do is=1,nstates
                   if(active.eq.is) cycle
-                  proba(active,is)=real(densmat(active,is)*b_matrix_temp(is,active))
-                  proba(active,is)=(2.0)*timstp*proba(active,is)/real(densmat(active,active))
+                  if(ldiabatic) then
+                      proba(active,is)=real(densadia(active,is)*b_matrix_temp(is,active))
+                      proba(active,is)=(2.0)*timstp*proba(active,is)/real(densadia(active,active))
+                  else
+                      proba(active,is)=real(densmat(active,is)*b_matrix_temp(is,active))
+                      proba(active,is)=(2.0)*timstp*proba(active,is)/real(densmat(active,active))
+                  end if
               end do
 !              write(*,'(5e18.10,i5)')  time, q(1), p(1), kine, pote,active
-              write(*,'(5e18.10,i5)')  time, q(1), p(1), densmat(1,1),active
-!              write(*,'(a)') 'proba'
-!              if(real(densmat(2,2))>0.00001) write(*,*) 'hello'
+!              write(*,'(7e18.10)')  time, q(1), p(1), coef(1) ,coef(2)
 
-              call electronic_propagate(densmat,Vd,nacl,(timstp/2.0),nstates,.false.)
+              if(mod(timecounter,pitch).eq.0) then
+                  write(*,'(5e18.10,i5)')  time, q(1), p(1), real(densmat(active,active))&
+                  &,proba(active,2), active
+              end if
+              call electronic_propagate(densmat,Vd,nacl,(timstp/2.0),nstates,.false.,ldiabatic,eigvec,V)
+
+
               xranf = ran2(sh_seed)
  
               call select_newstate(active,xranf,proba,nstates)
