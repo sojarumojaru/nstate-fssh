@@ -16,28 +16,31 @@ program frog_batch
   real*8 au2rcm,pi,speedoflight,au2aa,omega
   real*8 ran2, kine, pote, totale
   
-  logical terminate, testmode, lafssh, ldiabatic, ldebug
+  logical terminate, testmode, lafssh, ldiabatic, ldebug,lcol, ldebug3
 
   testmode = .false.
   p_initial = 0.3
   p_final = 0.5
   p_step = 0.5
-  tmax = 4d4
-  timstp = 5d-1
-  nruns = 10
+  tmax = 8d4
+  timstp = 5d-4
+  nruns = 1
   mass = 1836.0
 
   nstates = 5
   ndim = 5
   
-  terminate = .false. 
-  lafssh = .true.
+  ldebug3 = .false.
   ldebug = .false.
+  terminate = .false. 
+
+  lafssh = .true.
+
   ldiabatic = .true.
 
   alpha=(1d0,0d0)
   beta=(0d0,0d0)
-  pitch=10
+  pitch=10000
 
   allocate(V(nstates,nstates))
   allocate(Vp(nstates,nstates,ndim))
@@ -80,6 +83,10 @@ program frog_batch
   end if
   !write(*,'(a)')  '#p,     trans_up,       refl_up,    trans_low,     refl_low'
 
+  !! If ldiabatic then denmat is athe diabatic density matrix, that is real time
+  !! propagated. densadia is used for augmented surface hoppping and the hopping
+  !! probabilities.
+
   if(ldiabatic) then
       allocate(densadia(nstates,nstates))
       allocate(densmatnew(nstates,nstates))
@@ -92,18 +99,27 @@ program frog_batch
          irun = irun + 1
           write(*,*) '# run  ',irun
           write(*,*) ''
+          write(*,'(a)')  'time, real(densmat(1,1)), real(densmat(2,2)), real(densmat(3,3)), proba,active'
           call initialize(p,q,densmat,active,ndim,p_initial,nstates,mass,omega)
           coef = 0d0
           if(ldiabatic) coef(1) =1d0
-          terminate = .false.
-          activeold = active
           time = 0
           call date_and_time(values=values) 
           sh_seed = (values(8)*1000 + values(7))*60 + 1
           do it = 1,30
               xranf=ran2(sh_seed)    
           end do
+
+          call electronic_evaluate(mass,omega,p,q,V,Vp,Vd,Vpd,nacv,ndim,&
+          &    nstates,active,eigvec,.false.)
+
+          do it = 1,nstates
+              if(real(eigvec(it,1)) > real(eigvec(active,1))) active = it
+          end do
+
           timecounter = 0
+          terminate = .false.
+          activeold = active
           do while((time<tmax).and.(.not.terminate)) 
               timecounter = timecounter + 1
               call electronic_evaluate(mass,omega,p,q,V,Vp,Vd,Vpd,nacv,ndim,&
@@ -117,8 +133,6 @@ program frog_batch
                   call electronic_propagate(densmat,Vd,nacl,(timstp/2.0),nstates,ldebug,ldiabatic,eigvec,V)
 !                  call el_pro_dia(densmat,coef,(timstp/2.0),nstates,ndim,q,eigvec)
 !              write(*,'(5e18.10)') (real(densmat(it,it)), it = 1,5)
-              if(lafssh) call aush_propagate(densmat,nstates,ndim,delR,delP,Vpd, &
-                         &    gamma_collapse,gamma_reset,mass,nacl,Vd,timstp,active)
               counter = 0
               if (ldiabatic) then
                   
@@ -127,9 +141,35 @@ program frog_batch
              
                   call zgemm('N','C',nstates,nstates,nstates,alpha,densmatnew,nstates,&
                        eigvec,nstates,beta,densadia,nstates)
+                  if((mod(timecounter,pitch).eq.0).or.(lcol)) then
+ 
+                      if(ldebug3)    write(*,*) ''
+                      if(ldebug3)    write(*,*) ''
+                      if(ldebug3)    write(*,*) ''
+                      if(ldebug3)    write(*,'(a)') 'eigvec:'
+                      if(ldebug3)    write(*,'(10e18.10)') eigvec
+                      if(ldebug3)    write(*,*) ''
+                      if(ldebug3)    write(*,*) ''
+                      if(ldebug3)    write(*,*) ''
+                      if(ldebug3)    write(*,'(a)') 'densmat after in diabatic:'
+                      if(ldebug3)    write(*,'(10e18.10)') densmat
+                      if(ldebug3)    write(*,'(a)') 'densmat after in adiabatic:'
+                      if(ldebug3)    write(*,'(10e18.10)') densadia
+                      if(ldebug3)    write(*,*) ''
+                      if(ldebug3)    write(*,*) ''
+                      if(ldebug3)    write(*,*) ''
+                  end if
               end if
 
-
+              if(lafssh) then 
+                  if(ldiabatic) then 
+                      call aush_propagate(densadia,nstates,ndim,delR,delP,Vpd, &
+                         &    gamma_collapse,gamma_reset,mass,nacl,Vd,timstp,active)
+                  else
+                      call aush_propagate(densmat,nstates,ndim,delR,delP,Vpd, &
+                         &    gamma_collapse,gamma_reset,mass,nacl,Vd,timstp,active)
+                  end if 
+              end if
 
               do is = 1,nstates
                   do it = is,nstates
@@ -157,28 +197,56 @@ program frog_batch
 !              write(*,'(5e18.10,i5)')  time, q(1), p(1), kine, pote,active
 !              write(*,'(7e18.10)')  time, q(1), p(1), coef(1) ,coef(2)
 
-              if(mod(timecounter,pitch).eq.0) then
-                  write(*,'(5e18.10,i5)')  time, q(1), p(1), real(densmat(active,active))&
-                  &,proba(active,2), active
+
+
+
+              !! Main printing for data
+
+              if((mod(timecounter,pitch).eq.0).or.(lcol)) then
+                  write(*,'(5e18.10,i5)')  time, real(densmat(1,1)), real(densmat(2,2)), real(densmat(3,3))&
+                  &,gamma_collapse(1), active
               end if
+
+
               call electronic_propagate(densmat,Vd,nacl,(timstp/2.0),nstates,.false.,ldiabatic,eigvec,V)
-
-
               xranf = ran2(sh_seed)
- 
               call select_newstate(active,xranf,proba,nstates)
+             
               if(lafssh) then 
                   if (active.ne.activeold)  then 
                       call au_hop(delR,delP,nstates,ndim,active)
                   else
-                      call au_collapse(gamma_reset,gamma_collapse,densmat,delR,&
-                           & delP,nstates,active)
+                      if(ldiabatic) then  
+                          call au_collapse(gamma_reset,gamma_collapse,densadia,delR,&
+                           & delP,nstates,active,lcol,ldebug3)
+                          call zgemm('C','N',nstates,nstates,nstates,alpha,eigvec,nstates,&
+                               densadia,nstates,beta,densmatnew,nstates)
+             
+                          call zgemm('N','N',nstates,nstates,nstates,alpha,densmatnew,nstates,&
+                               eigvec,nstates,beta,densmat,nstates)
+                          if(lcol.and.ldebug3) then
+                                 write(*,'(a)') 'densmat after in diabatic:'
+                                 write(*,'(10e18.10)') densmat
+                                 write(*,'(a)') 'eigvec'
+                                 write(*,'(10e18.10)') eigvec
+                                 write(*,*) ''
+                                 write(*,*) ''
+                                 write(*,*) ''
+                                 write(*,*) ''
+                          end if     
+                      else
+                          call au_collapse(gamma_reset,gamma_collapse,densmat,delR,&
+                           & delP,nstates,active,lcol)
+                      end if
                   end if
-              end if
+              else
+                  call zgemm('C','N',nstates,nstates,nstates,alpha,eigvec,nstates,&
+                       densadia,nstates,beta,densmatnew,nstates)
+                  call zgemm('N','N',nstates,nstates,nstates,alpha,densmatnew,nstates,&
+                       eigvec,nstates,beta,densmat,nstates)
+              end if    
+               
               time = time + timstp
-!              if ((abs(q(1))) > 11.0) then
-!                  terminate = .true.
-!              end if
           end do! time
           if ((q(1).gt.10.0).and.(active.eq.2)) stat(1) = stat(1) + 1
           if ((q(1).lt.-10.0).and.(active.eq.2)) stat(2) = stat(2) + 1
@@ -269,9 +337,6 @@ subroutine initialize(p,q,densmat,active,ndim,p_initial,nstates,mass,omega)
 
   densmat = 0d0
   densmat(active,active) = (1d0,0d0)
-
-
-
 
 end subroutine initialize
 function ran2(idum)

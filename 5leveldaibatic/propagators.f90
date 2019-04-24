@@ -752,9 +752,10 @@ end subroutine probcollapse
 !!A-FSSH, it may be collapsed to the active state, or not. If the 
 !!conditions for collapsing is satisfied, this subrountine alters the
 !!density matrix and delR and delP.
-subroutine au_collapse(gamma_reset,gamma_collapse,densmat,delR,delP,nstates,ifstatenow)
+subroutine au_collapse(gamma_reset,gamma_collapse,densmat,delR,delP,nstates,ifstatenow,lcol,ldebug3)
   implicit none
   
+  logical, intent(inout) :: lcol,ldebug3
   integer, intent(in) :: nstates                                !< The number of electronic states involved
   integer, intent(in) :: ifstatenow                             !< The active state (convention here, the lowest state => ifstatenow = 1)
   real*8, intent(in) :: gamma_collapse(nstates)              !< The array containing the probability of destruction of a state
@@ -787,32 +788,14 @@ subroutine au_collapse(gamma_reset,gamma_collapse,densmat,delR,delP,nstates,ifst
   one=(1d0,0d0)
   call random_number(xranf)
 
+  
+  lcol = .false.
   !> This is the block that calls the various random number generator options
   lreset = .false. 
+
   do i = 1,nstates
-
-      lcolpse = .false. 
-      if(gamma_collapse(i)>xranf) then
-      !write(*,'(a,i3)') 'Collapse condition satisfied for state ', i
-          icolstate = i
-          lcolpse = .true.
-          temp = densmat(i,i)
-          do j = 1,nstates
-              do k = 1,nstates
-                  densmat(j,k) = densmat(j,k)/(one-temp)
-              end do
-         
-              densmat(i,j) = 0.0
-              densmat(j,i) = 0.0
-          end do
-      end if
-
-      if(lcolpse) then
-          delR = 0.0
-          delP = 0.0
-      end if
-
       if(gamma_reset(i)>xranf) then
+          if(ldebug3) write(*,'(a,i3)') 'Reset condition satisfied for state ', i
           icolstate = i
           lreset = .true.
       end if
@@ -823,6 +806,42 @@ subroutine au_collapse(gamma_reset,gamma_collapse,densmat,delR,delP,nstates,ifst
       delR = 0.0
       delP = 0.0
   end if
+
+  if(.not.lreset) then
+      do i = 1,nstates
+    
+          lcolpse = .false. 
+          if((gamma_collapse(i)>xranf).and.(.not.lcolpse)) then
+              lcol = .true.
+              if(ldebug3) write(*,'(a)') 'gamma_collapse'
+              if(ldebug3) write(*,'(5e18.10)') gamma_collapse
+              if(ldebug3) write(*,'(a,i3)') 'Collapse condition satisfied for state ', i
+              if(ldebug3) write(*,'(a)') 'densmat before in adiabatic before collapse:'
+              if(ldebug3) write(*,'(10e18.10)') densmat
+              if(ldebug3) write(*,'(a)') ''
+              icolstate = i
+              lcolpse = .true.
+              temp = densmat(i,i)
+              do j = 1,nstates
+                  do k = 1,nstates
+                      densmat(j,k) = densmat(j,k)/(one-temp)
+                  end do
+             
+                  densmat(i,j) = 0.0
+                  densmat(j,i) = 0.0
+              end do
+              if(ldebug3) write(*,'(a)') 'densmat in adiabatic after collapse:'
+              if(ldebug3) write(*,'(10e18.10)') densmat
+              if(ldebug3) write(*,'(a)') ''
+          end if
+    
+          if(lcolpse) then
+              delR = 0.0
+              delP = 0.0
+          end if
+      end do
+  end if
+
 end subroutine au_collapse
 
 subroutine au_hop(delR,delP,nstates,ndim,ifstate)
