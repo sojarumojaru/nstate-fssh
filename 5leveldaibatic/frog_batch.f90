@@ -16,14 +16,14 @@ program frog_batch
   real*8 au2rcm,pi,speedoflight,au2aa,omega
   real*8 ran2, kine, pote, totale
   
-  logical terminate, testmode, lafssh, ldiabatic, ldebug,lcol, ldebug3
+  logical terminate, testmode, lafssh, ldiabatic, ldebug,lcol, ldebug3,debugadiab
 
   testmode = .false.
   p_initial = 0.3
   p_final = 0.5
   p_step = 0.5
-  tmax = 8d4
-  timstp = 5d-4
+  tmax = 8d3
+  timstp = 5d-2
   nruns = 1
   mass = 1836.0
 
@@ -34,13 +34,15 @@ program frog_batch
   ldebug = .false.
   terminate = .false. 
 
-  lafssh = .true.
+  lafssh = .false.
 
   ldiabatic = .true.
 
   alpha=(1d0,0d0)
   beta=(0d0,0d0)
-  pitch=10000
+  pitch=1000
+  debugadiab =.false.
+  lcol = .false.
 
   allocate(V(nstates,nstates))
   allocate(Vp(nstates,nstates,ndim))
@@ -56,6 +58,7 @@ program frog_batch
   allocate(values(8))
 
   allocate(densmat(nstates,nstates))
+  allocate(densmatnew(nstates,nstates))
   allocate(delR(nstates,nstates,ndim))
   allocate(delP(nstates,nstates,ndim))
   
@@ -89,7 +92,6 @@ program frog_batch
 
   if(ldiabatic) then
       allocate(densadia(nstates,nstates))
-      allocate(densmatnew(nstates,nstates))
   end if
 
   do while(p_initial < p_final) !initial momentum loop
@@ -99,7 +101,6 @@ program frog_batch
          irun = irun + 1
           write(*,*) '# run  ',irun
           write(*,*) ''
-          write(*,'(a)')  'time, real(densmat(1,1)), real(densmat(2,2)), real(densmat(3,3)), proba,active'
           call initialize(p,q,densmat,active,ndim,p_initial,nstates,mass,omega)
           coef = 0d0
           if(ldiabatic) coef(1) =1d0
@@ -112,11 +113,16 @@ program frog_batch
 
           call electronic_evaluate(mass,omega,p,q,V,Vp,Vd,Vpd,nacv,ndim,&
           &    nstates,active,eigvec,.false.)
+          
+          if(ldiabatic) then
+              do it = 1,nstates
+                  if(real(eigvec(it,1)) > real(eigvec(active,1))) active = it
+              end do
+          end if
+          write(*,'(a)')  '#time, real(densmat(1,1)), real(densmat(2,2)), real(densmat(3,3)), proba,active'
 
-          do it = 1,nstates
-              if(real(eigvec(it,1)) > real(eigvec(active,1))) active = it
-          end do
-
+      !    write(*,'(5e18.10,i5)')  time, real(densmat(1,1)), real(densmat(2,2)), real(densmat(3,3))&
+       !   &,gamma_collapse(1), active
           timecounter = 0
           terminate = .false.
           activeold = active
@@ -142,7 +148,7 @@ program frog_batch
                   call zgemm('N','C',nstates,nstates,nstates,alpha,densmatnew,nstates,&
                        eigvec,nstates,beta,densadia,nstates)
                   if((mod(timecounter,pitch).eq.0).or.(lcol)) then
- 
+                      
                       if(ldebug3)    write(*,*) ''
                       if(ldebug3)    write(*,*) ''
                       if(ldebug3)    write(*,*) ''
@@ -163,12 +169,12 @@ program frog_batch
 
               if(lafssh) then 
                   if(ldiabatic) then 
-                      call aush_propagate(densadia,nstates,ndim,delR,delP,Vpd, &
+                      call aush_propagate(densadia,p,nstates,ndim,delR,delP,Vpd, &
                          &    gamma_collapse,gamma_reset,mass,nacl,Vd,timstp,active)
                   else
-                      call aush_propagate(densmat,nstates,ndim,delR,delP,Vpd, &
+                      call aush_propagate(densmat,p,nstates,ndim,delR,delP,Vpd, &
                          &    gamma_collapse,gamma_reset,mass,nacl,Vd,timstp,active)
-                  end if 
+                  end if    
               end if
 
               do is = 1,nstates
@@ -202,11 +208,17 @@ program frog_batch
 
               !! Main printing for data
 
-              if((mod(timecounter,pitch).eq.0).or.(lcol)) then
-                  write(*,'(5e18.10,i5)')  time, real(densmat(1,1)), real(densmat(2,2)), real(densmat(3,3))&
-                  &,gamma_collapse(1), active
+              if(((mod(timecounter-1,pitch).eq.0).or.(lcol)).and.(.not.debugadiab)) then
+
+                  write(*,'(5e18.10,2i5)')  time, real(densmat(1,1)), real(densmat(2,2)), real(densmat(3,3))&
+                  &,gamma_collapse(1), active, lcol
+                  lcol = .false.
               end if
 
+!              if(debugadiab) then
+!                  write(*,'(6e16.8,i5)')  time, real(densadia(1,1)), real(densadia(2,2)), real(densadia(3,3))&
+!                  &, real(densadia(4,4)), real(densadia(5,5)), active
+!              end if
 
               call electronic_propagate(densmat,Vd,nacl,(timstp/2.0),nstates,.false.,ldiabatic,eigvec,V)
               xranf = ran2(sh_seed)
@@ -241,7 +253,7 @@ program frog_batch
                   end if
               else
                   call zgemm('C','N',nstates,nstates,nstates,alpha,eigvec,nstates,&
-                       densadia,nstates,beta,densmatnew,nstates)
+                       densmat,nstates,beta,densmatnew,nstates)
                   call zgemm('N','N',nstates,nstates,nstates,alpha,densmatnew,nstates,&
                        eigvec,nstates,beta,densmat,nstates)
               end if    

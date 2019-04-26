@@ -321,9 +321,9 @@ subroutine classical_propagate(p,q,mass,force,active,activeold,nacv,kepara,&
       write(*,*) 'nacv'
       write(*,'(10e18.10)') nacv
 
-     write(*,*) 'Vd'
-     write(*,'(10e18.10)') Vd
-     stop
+      write(*,*) 'Vd'
+      write(*,'(10e18.10)') Vd
+      stop
 
   end if
 
@@ -501,7 +501,7 @@ end subroutine electronic_propagate
 
 
 
-subroutine aush_propagate(densmat,nstates,ndim,delR,delP,Vpd,gamma_collapse,&
+subroutine aush_propagate(densmat,p,nstates,ndim,delR,delP,Vpd,gamma_collapse,&
            & gamma_reset,mass,nacl,exci,timstp,ifstatenow)
 
   implicit none 
@@ -516,6 +516,7 @@ subroutine aush_propagate(densmat,nstates,ndim,delR,delP,Vpd,gamma_collapse,&
   complex*16, intent(in) :: nacl((nstates*(nstates+1))/2)
   complex*16, intent(in)    :: exci(nstates)
   real*8,intent(inout) :: gamma_collapse(nstates)
+  real*8, intent(inout) :: p(ndim)
   real*8,intent(inout) :: gamma_reset(nstates)
   real*8, intent(in) ::  mass,timstp
   integer, intent(in) :: ifstatenow
@@ -530,7 +531,7 @@ subroutine aush_propagate(densmat,nstates,ndim,delR,delP,Vpd,gamma_collapse,&
   real*8, allocatable :: taudinv(:,:),taurinv(:,:)
   complex*16, allocatable :: delRdot(:,:,:,:), delRinput(:,:,:), delRoutput(:,:,:)
   complex*16, allocatable :: delPdot(:,:,:,:), delPinput(:,:,:), delPoutput(:,:,:)
-  complex*16, allocatable :: force(:,:,:)
+  complex*16, allocatable :: force(:,:,:), vel(:)
   complex*16 delRPnorm, zdotc
   
 
@@ -552,10 +553,11 @@ subroutine aush_propagate(densmat,nstates,ndim,delR,delP,Vpd,gamma_collapse,&
   allocate(delRoutput(nstates,nstates,ndim), stat=ierr)
   allocate(delPoutput(nstates,nstates,ndim), stat=ierr)
   allocate(force(nstates,nstates,ndim), stat=ierr)
+  allocate(vel(ndim),stat=ierr)
   allocate(taudinv(nstates,nstates), stat=ierr)
   allocate(taurinv(nstates,nstates), stat=ierr)
 
-
+  vel = p/mass
   force = -Vpd  
   do it = 1,nstates
       do is = 1,ndim
@@ -593,7 +595,7 @@ subroutine aush_propagate(densmat,nstates,ndim,delR,delP,Vpd,gamma_collapse,&
           delR = delR + minitimstp*rkcoefs(i)*delRdot(:,:,:,i)/rksum    
           delP = delP + minitimstp*rkcoefs(i)*delPdot(:,:,:,i)/rksum    
       end do
-      call probcollapse(delR,delP,force,nstates,ndim,ifstatenow,taudinv,taurinv)
+      call probcollapse(vel,delR,delP,force,nstates,ndim,ifstatenow,taudinv,taurinv)
       do i = 1,nstates
           gamma_collapse(i) = gamma_collapse(i) + minitimstp*taudinv(i,ifstatenow)
           gamma_reset(i) = gamma_reset(i) + minitimstp*taurinv(i,ifstatenow)
@@ -694,7 +696,7 @@ subroutine delRdelPdot(nstates,ndim,exci,mass,nacl, &
 end subroutine delRdelPdot
 
 
-subroutine probcollapse(delR,delP,force,nstates,ndim,ifstatenow,taudinv,taurinv)
+subroutine probcollapse(vel,delR,delP,force,nstates,ndim,ifstatenow,taudinv,taurinv)
   implicit none
 
 
@@ -708,6 +710,7 @@ subroutine probcollapse(delR,delP,force,nstates,ndim,ifstatenow,taudinv,taurinv)
                                                                            !!other states
   real*8, intent(inout)    :: taudinv(nstates,nstates)                  !< The collapse variables to be integrated over dt
   real*8, intent(inout)    :: taurinv(nstates,nstates)                  !< The reset variables to be integrated over dt
+  real*8, intent(inout)    :: vel(ndim)
   
   !Local Variable
   integer ii,idimension 
@@ -721,13 +724,14 @@ subroutine probcollapse(delR,delP,force,nstates,ndim,ifstatenow,taudinv,taurinv)
                         &*(delR(ii,ii,idimension) - delR(ifstatenow,ifstatenow,idimension)))
 
 
-          temp2 = abs(force(ii,ifstatenow,idimension)*(delR(ii,ii,idimension) - delR(ifstatenow,ifstatenow,idimension)))
+          temp2 = abs(force(ii,ifstatenow,idimension)*(delR(ii,ii,idimension) -&
+          &delR(ifstatenow,ifstatenow,idimension)*vel(idimension)))
 
 
           temp3 = Real((delR(ii,ii,idimension) - delR(ifstatenow,ifstatenow,idimension))*&
           &       (delP(ii,ii,idimension) - delP(ifstatenow,ifstatenow,idimension)))
 
-          taudinv(ii,ifstatenow) = taudinv(ii,ifstatenow)+temp1 - 2.0 * temp2
+          taudinv(ii,ifstatenow) = taudinv(ii,ifstatenow)+temp1 - 2.0 * temp2/(sum(vel*vel))
           taurinv(ii,ifstatenow) = taurinv(ii,ifstatenow)-temp1
 
       end do
@@ -770,7 +774,7 @@ subroutine au_collapse(gamma_reset,gamma_collapse,densmat,delR,delP,nstates,ifst
   real*8  xranf
   integer i, j, k,icolstate
   logical  lcolpse, lreset
-  complex*16  temp, one
+  complex*16  temp1, temp2, one
   !*********************************************************************!!
   !>  To use this subroutine, the current electronic RDM is to be passed with an 
   !!  array, gamma_collapse which contains the probability of collapse of each state.
@@ -821,15 +825,21 @@ subroutine au_collapse(gamma_reset,gamma_collapse,densmat,delR,delP,nstates,ifst
               if(ldebug3) write(*,'(a)') ''
               icolstate = i
               lcolpse = .true.
-              temp = densmat(i,i)
+
+              temp1 = densmat(i,i)
+              temp2 = densmat(ifstatenow,ifstatenow)
+
+              densmat(ifstatenow,ifstatenow) = (temp1+temp2)
               do j = 1,nstates
-                  do k = 1,nstates
-                      densmat(j,k) = densmat(j,k)/(one-temp)
-                  end do
-             
+                  if (j.eq.ifstatenow) cycle
+                  densmat(ifstatenow,j) = densmat(ifstatenow,j) *sqrt((temp1+temp2)/temp2)
+                  densmat(j,ifstatenow) = densmat(j,ifstatenow) *sqrt((temp1+temp2)/temp2)
                   densmat(i,j) = 0.0
                   densmat(j,i) = 0.0
               end do
+
+
+
               if(ldebug3) write(*,'(a)') 'densmat in adiabatic after collapse:'
               if(ldebug3) write(*,'(10e18.10)') densmat
               if(ldebug3) write(*,'(a)') ''
