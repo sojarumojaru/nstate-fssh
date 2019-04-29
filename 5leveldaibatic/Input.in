@@ -1,0 +1,17 @@
+.false.                                    !   testmode = .false.
+0.3                                        !  p_initial = 0.3
+0.5                                        !    p_final = 0.5
+0.5                                        !     p_step = 0.5
+8d4                                        !       tmax = 8d2
+5d-3                                       !     timstp = 5d-3
+10                                         !      nruns = 1
+1836.0                                     !       mass = 1836.0
+5                                          !    nstates = 5
+5                                          !       ndim = 5
+.false.                                    !    ldebug3 = .false.
+.false.                                    !     ldebug = .false.
+.false.                                    !  terminate = .false.
+.true.                                     !     lafssh = .true.
+.true.                                     !  ldiabatic = .true.
+1000                                       !      pitch = 1000
+.false.                                    ! debugadiab = .false.

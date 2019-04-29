@@ -18,31 +18,30 @@ program frog_batch
   
   logical terminate, testmode, lafssh, ldiabatic, ldebug,lcol, ldebug3,debugadiab
 
-  testmode = .false.
-  p_initial = 0.3
-  p_final = 0.5
-  p_step = 0.5
-  tmax = 8d3
-  timstp = 5d-2
-  nruns = 1
-  mass = 1836.0
+  open(2, file = 'Input.in')
 
-  nstates = 5
-  ndim = 5
-  
-  ldebug3 = .false.
-  ldebug = .false.
-  terminate = .false. 
+  read(2,*)  testmode
+  read(2,*) p_initial
+  read(2,*)   p_final
+  read(2,*)    p_step
+  read(2,*)      tmax
+  read(2,*)    timstp
+  read(2,*)     nruns
+  read(2,*)      mass
+  read(2,*)   nstates
+  read(2,*)      ndim
+  read(2,*)   ldebug3
+  read(2,*)    ldebug
+  read(2,*) terminate
+  read(2,*)    lafssh
+  read(2,*) ldiabatic
+  read(2,*)     pitch
+  read(2,*)debugadiab
 
-  lafssh = .false.
 
-  ldiabatic = .true.
-
+  lcol = .false.
   alpha=(1d0,0d0)
   beta=(0d0,0d0)
-  pitch=1000
-  debugadiab =.false.
-  lcol = .false.
 
   allocate(V(nstates,nstates))
   allocate(Vp(nstates,nstates,ndim))
@@ -251,12 +250,12 @@ program frog_batch
                            & delP,nstates,active,lcol)
                       end if
                   end if
-              else
-                  call zgemm('C','N',nstates,nstates,nstates,alpha,eigvec,nstates,&
-                       densmat,nstates,beta,densmatnew,nstates)
-                  call zgemm('N','N',nstates,nstates,nstates,alpha,densmatnew,nstates,&
-                       eigvec,nstates,beta,densmat,nstates)
-              end if    
+              end if
+!                  call zgemm('C','N',nstates,nstates,nstates,alpha,eigvec,nstates,&
+!                       densmat,nstates,beta,densmatnew,nstates)
+!                  call zgemm('N','N',nstates,nstates,nstates,alpha,densmatnew,nstates,&
+!                       eigvec,nstates,beta,densmat,nstates)
+!              end if    
                
               time = time + timstp
           end do! time

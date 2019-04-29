@@ -1,4 +1,4 @@
-ifort -mkl -debug -g potentials.f90 propagators.f90 frog_batch.f90 -o holfssh
-#ifort -mkl -O3 potentials.f90 propagators.f90 frog_batch.f90 -o holfssh
+#ifort -mkl -debug -g potentials.f90 propagators.f90 frog_batch.f90 -o holfssh
+ifort -mkl -O3 potentials.f90 propagators.f90 frog_batch.f90 -o holfssh
 #F95ROOT=$MKLROOT
 #gfortran ${F95ROOT}/lib/intel64/libmkl_blas95_lp64.a ${F95ROOT}/lib/intel64/libmkl_lapack95_lp64.a -L${MKLROOT}/lib/intel64 -Wl,--no-as-needed -lmkl_gf_lp64 -lmkl_sequential -lmkl_core -lpthread -lm -ldl potentials.f90 propagators.f90 frog_batch.f90 -o holfssh
